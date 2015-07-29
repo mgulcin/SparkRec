@@ -1,7 +1,8 @@
-import java.io.Serializable;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 
 import org.apache.commons.collections.CollectionUtils;
@@ -19,6 +20,7 @@ import org.apache.spark.mllib.linalg.distributed.IndexedRow;
 import org.apache.spark.mllib.linalg.distributed.MatrixEntry;
 import org.apache.spark.mllib.linalg.distributed.RowMatrix;
 
+import scala.Serializable;
 import scala.Tuple2;
 
 import com.google.common.base.Optional;
@@ -26,7 +28,13 @@ import com.google.common.base.Optional;
 
 public class UserBasedCollabFiltering implements Serializable {
 
-	public void performCollaborativeFiltering(String file){
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = -1413094281502110275L;
+
+
+	public static void performCollaborativeFiltering(String file){
 		SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local[2]").set("spark.executor.memory","1g");
 		JavaSparkContext sc = new JavaSparkContext(conf);
 
@@ -34,22 +42,26 @@ public class UserBasedCollabFiltering implements Serializable {
 		JavaRDD<String> data = sc.textFile(file);
 
 		// parse data: userid, <list of itemid> e.g. u3--><i21,i45,i89>
-		JavaPairRDD<String,Iterable<String>> dataMapped = data.map((String line)->Arrays.asList(line.split(",")))
-				.mapToPair((List<String> userItemList)->new Tuple2<String, Iterable<String>>(userItemList.get(0), userItemList.subList(1,userItemList.size())));
-		JavaPairRDD<String, Iterable<String>> dataMappedFiltered = dataMapped.filter(dm->(((Collection<String>) dm._2()).size() > 0));
-		dataMappedFiltered.cache();// TODO what if I cache more than available resources?? Does it apply kind of LRU??
+		JavaRDD<ArrayList<Integer>> dataSplitted = data.map((String line)->splitLine(line));
+		JavaPairRDD<Integer,Iterable<Integer>> dataMapped = dataSplitted.mapToPair((ArrayList<Integer> userItemList)->new Tuple2<Integer, Iterable<Integer>>(userItemList.get(0), 
+				new ArrayList<Integer>(userItemList.subList(1,userItemList.size()))));
 		// print 
-		dataMappedFiltered.foreach(s->System.out.println(s));
+		//dataMapped.foreach(s->System.out.println(s));
+		JavaPairRDD<Integer, Iterable<Integer>> dataMappedFiltered = dataMapped.filter(dm->(((Collection<Integer>) dm._2()).size() > 0));
+		// print 
+		//dataMappedFiltered.foreach(s->System.out.println(s));
 
-		// create inverted index representation: itemId to userId list e.g. i32-->u1
-		JavaPairRDD<String, String> invertedIndexMapped = dataMappedFiltered.flatMapToPair(tuple -> createInvertedIndex(tuple));
-		//JavaPairRDD<String, Iterable<String>> invertedIndexGrouped = invertedIndexMapped.groupByKey();
-		// print inverted list
-		//invertedIndexMapped.foreach(t->System.out.println(t._1() + " , " + t._2()));
-		//invertedIndexGrouped.foreach(t->printTuple2(t));
+		// flatten dataMapped: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
+		JavaPairRDD<Integer, Integer> dataFlattened = dataMappedFiltered.flatMapValues(e->e);
+		dataFlattened.cache();// TODO what if I cache more than available resources?? Does it apply kind of LRU??
+		// print
+		//dataFlattened.foreach(s->System.out.println(s));
+
 
 		// calculate cosine similarity of users 
-		JavaRDD<Vector> vectorOfUsers = createVectorOf(invertedIndexMapped);
+		JavaRDD<Vector> vectorOfUsers = createVectorOf(dataFlattened);
+		//vectorOfUsers.foreach(v->System.out.println(v.toString()));
+
 		RowMatrix matrix = new RowMatrix(vectorOfUsers.rdd());
 		// NOTE result is listed for upper triangle, i.e. for j indices larger than i indices
 		// -- i.e. An n x n sparse upper-triangular matrix of cosine similarities between columns of this matrix.
@@ -67,49 +79,83 @@ public class UserBasedCollabFiltering implements Serializable {
 		JavaRDD<Iterable<MatrixEntry>> groupedSortedSimUnion = sortedSimEntriesUnionRdd.groupBy(m->m.i()).values();
 		//groupedSortedSimUnion.foreach(entry->print(entry));
 
-		// Select most similar k entries 
-		int k = 2;
-		JavaRDD<MatrixEntry> topK = groupedSortedSimUnion.flatMap((Iterable<MatrixEntry> eList)->getTopK(k, eList));
+		// Select most similar N entries 
+		int N = 2;
+		JavaRDD<MatrixEntry> topK = groupedSortedSimUnion.flatMap((Iterable<MatrixEntry> eList)->getTopN(N, eList));
 		// print top-k
 		//topK.foreach(entry->System.out.println(entry.toString()));
 
 		// Select most similar users (i.e. neighbors)
-		JavaPairRDD<String,String> neighbors = topK.mapToPair((MatrixEntry topElement)->new Tuple2(String.valueOf(topElement.i()), String.valueOf(topElement.j())));
+		JavaPairRDD<Integer,Integer> neighbors = topK.mapToPair((MatrixEntry topElement)->new Tuple2<Integer,Integer>((int)topElement.i(), (int)topElement.j()));
 		neighbors.cache();
 		// print neighbors
-		neighbors.foreach(entry->System.out.println(entry.toString()));
+		//neighbors.foreach(entry->System.out.println(entry.toString()));
 
-		/*// apply join on dataMapped and neighbors: i.e (targetUser,neighbor) (neighbor,<itemList>) --> neighbor, (targetUser, <itemList>)
-		JavaPairRDD<String,String> neighborsSwapped = neighbors.mapToPair((Tuple2<String,String>n)->n.swap());
+
+
+		// apply join on dataMapped and neighbors: i.e (targetUser,neighbor) (neighbor,<itemList>) --> neighbor, (targetUser, <itemList>)
+		JavaPairRDD<Integer,Integer> neighborsSwapped = neighbors.mapToPair((Tuple2<Integer,Integer>n)->n.swap());
 		//neighborsSwapped.foreach(entry->System.out.println(entry.toString()));
 		//System.out.println(neighborsSwapped.count());
 		//System.out.println(dataMapped.count());
 
-		Broadcast<Map<String, String>> neighborsSwappedMap = sc.broadcast(neighborsSwapped.collectAsMap());
-				JavaPairRDD<String, Iterable<String>> filtered = dataMapped.filter(dm->(neighborsSwappedMap.value().get(dm._1) != null));
-		 
+
+		JavaPairRDD<Integer, Tuple2<Integer, Optional<Integer>>> joined = dataFlattened.leftOuterJoin(neighborsSwapped);
+		JavaPairRDD<Integer, Tuple2<Integer, Integer>> joinedMapped = joined.mapToPair(tuple-> removeOptional(tuple));
+
+		// get the items that are suggested to target : userid--> recitemId
+		JavaPairRDD<Integer,Integer> recList = joinedMapped.mapToPair(f->new Tuple2<Integer,Integer>(f._2()._2(),f._2()._1()));
+		//JavaPairRDD<Integer, Iterable<Integer>> recListConcat = recList.groupByKey();
+		// print
+		//recListConcat.foreach(tuple->printTuple2(tuple));
+
+		// find frequency of recItems per user
+		
+		// select k many recItems based on frequncies
+
+		sc.close();
+	}
 
 
-		JavaPairRDD<String, Tuple2<Iterable<String>, Optional<String>>> joined = dataMappedFiltered.leftOuterJoin(neighborsSwapped);
-		JavaPairRDD<String, Tuple2<Iterable<String>, String>> joinedMapped = joined.mapToPair(tuple-> removeOptional(tuple));
+	private static Tuple2<Integer,Iterable<Integer>> selectItems(
+			JavaPairRDD<Integer, Iterable<Integer>> dataMappedFiltered,
+			Integer nId, Integer tuId) {
 
-
-		// get the items that are suggested to target :
-		//JavaPairRDD<String,Iterable<String>> recList = joinedMapped.mapToPair(f->f._2());
-		//JavaPairRDD<String, Iterable<String>> recListConcat = recList.reduceByKey((x,y)-> Iterables.concat(x,y));
-
-
-		//System.out.println(joinedMapped.count());
-		joinedMapped.collect();
-		//foreach(e->deneme(e));
-*/	}
-	
+		Iterable<Integer> recItems = selectItems(dataMappedFiltered,nId);
+		return new Tuple2<Integer,Iterable<Integer>>(tuId,recItems);
+	}
 
 
 
 
-	private boolean isElementOf(Tuple2<String, Iterable<String>> dm,
-			JavaPairRDD<String, String> neighborsSwapped) {
+
+	private static List<Integer> selectItems(
+			JavaPairRDD<Integer, Iterable<Integer>> dataMappedFiltered,
+			Integer nId) {
+		List<Integer> resVal = dataMappedFiltered.filter((dm->dm._1 == nId)).flatMap(dm->dm._2).collect();
+		return resVal;
+	}
+
+
+
+
+
+	private static ArrayList<Integer> splitLine(String line) {
+		String[] splitted = line.split(",");
+		ArrayList<Integer> intVals = new ArrayList<Integer>(splitted.length);
+		for(String s: splitted){
+			intVals.add(Integer.valueOf(s));
+		}
+
+		return intVals;// shoukd I close sc here? why?
+	}
+
+
+
+
+
+	private boolean isElementOf(Tuple2<Integer, Iterable<Integer>> dm,
+			JavaPairRDD<Integer, Integer> neighborsSwapped) {
 		boolean retVal = false;
 		JavaRDD<Boolean> temp = neighborsSwapped.map(n-> n._1.equals(dm._1())).filter(r->r==true);
 		long trueCount = temp.count();
@@ -119,17 +165,17 @@ public class UserBasedCollabFiltering implements Serializable {
 		return retVal;
 	}
 
-	private Tuple2<String, Tuple2<Iterable<String>,String>> removeOptional(Tuple2<String, Tuple2<Iterable<String>, Optional<String>>> tuple)
+	private static Tuple2<Integer, Tuple2<Integer, Integer>> removeOptional(Tuple2<Integer, Tuple2<Integer, Optional<Integer>>> tuple)
 	{
 		if(tuple._2()._2().isPresent()){
-			return new Tuple2<String, Tuple2<Iterable<String>, String>>(tuple._1(), new Tuple2(tuple._2()._1(), tuple._2()._2().get()));
+			return new Tuple2<Integer, Tuple2<Integer, Integer>>(tuple._1(), new Tuple2<Integer, Integer>(tuple._2()._1(), tuple._2()._2().get()));
 		}else{
-			return new Tuple2<String, Tuple2<Iterable<String>, String>>(tuple._1(), new Tuple2(tuple._2()._1(), "dummy"));
+			return new Tuple2<Integer, Tuple2<Integer, Integer>>(tuple._1(), new Tuple2<Integer, Integer>(tuple._2()._1(), -1));
 		}
 	};
 
 
-	private  JavaRDD<MatrixEntry> createFullMatrix(
+	private static  JavaRDD<MatrixEntry> createFullMatrix(
 			CoordinateMatrix simsPerfect) {
 		JavaRDD<MatrixEntry> simEntriesUpperRdd = simsPerfect.entries().toJavaRDD();
 		//JavaRDD<Iterable<MatrixEntry>> groupedSimUpper = simEntriesUpperRdd.groupBy(m->m.i()).values();
@@ -150,7 +196,7 @@ public class UserBasedCollabFiltering implements Serializable {
 
 
 
-	private  Iterable<MatrixEntry> getTopK(int k, Iterable<MatrixEntry> e) {
+	private static  Iterable<MatrixEntry> getTopN(int k, Iterable<MatrixEntry> e) {
 		List<MatrixEntry> list = new ArrayList<MatrixEntry>();
 		CollectionUtils.addAll(list, e.iterator());// TODO what if iterable is too large to fit into memory??
 		//Comparator<MatrixEntry> comp = Comparator.comparing(x -> -1* x.value());
@@ -159,7 +205,7 @@ public class UserBasedCollabFiltering implements Serializable {
 		if(list.size() < k){
 			k = list.size();
 		}
-		List<MatrixEntry> topK = list.subList(0, k);
+		List<MatrixEntry> topK = new ArrayList<MatrixEntry>(list.subList(0, k));
 
 
 		return topK;
@@ -171,12 +217,14 @@ public class UserBasedCollabFiltering implements Serializable {
 	 * @param data: itemId-->userId RDD
 	 * @return SparseVector of user freq. for each item
 	 */
-	private  JavaRDD<Vector> createVectorOf(
-			JavaPairRDD<String, String> invertedIndexMapped) {
+	private static  JavaRDD<Vector> createVectorOf(JavaPairRDD<Integer, Integer> dataFlattened) {
 		JavaRDD<Vector> retVector = null;
-		/*// count total number of users
-		long userCount = countUsers(invertedIndexMapped);
-		System.out.println(userCount);*/
+
+		// create inverted index representation: itemId to userId e.g. i21-->u3
+		JavaPairRDD<Integer, Integer> invertedIndexMapped = dataFlattened.mapToPair(tuple-> tuple.swap());
+		// print inverted list
+		//invertedIndexMapped.foreach(t->System.out.println(t._1() + " , " + t._2()));
+
 		int largestUserId = findLargestUserId(invertedIndexMapped);
 		//System.out.println(largestUserId);
 
@@ -184,10 +232,10 @@ public class UserBasedCollabFiltering implements Serializable {
 		// TODO Normally Version 1 and 2 should produce same results, but they do not!!!
 		//////////Version 1
 		// create itemid-->userid list
-		JavaPairRDD<String, Iterable<String>> invertedIndexGrouped = invertedIndexMapped.groupByKey();
+		JavaPairRDD<Integer, Iterable<Integer>> invertedIndexGrouped = invertedIndexMapped.groupByKey();
 		//invertedIndexGrouped.foreach(t->printTuple2(t));
 
-		JavaRDD<Iterable<String>> values = invertedIndexGrouped.values();
+		JavaRDD<Iterable<Integer>> values = invertedIndexGrouped.values();
 		// for each rdd(~entry) find the freq. of users
 		retVector = values.map(uList-> countUsers(largestUserId+1, uList));
 		//////////Version 1
@@ -208,11 +256,11 @@ public class UserBasedCollabFiltering implements Serializable {
 		return retVector;
 	}
 
-	private Vector countUsers(Integer size, Iterable<String> uList){
+	private static Vector countUsers(Integer size, Iterable<Integer> uList){
 		List<Integer> indices = new ArrayList<Integer>();
 		List<Double> values = new ArrayList<Double>();
-		for (String u:uList){
-			indices.add(Integer.parseInt(u));
+		for (Integer u:uList){
+			indices.add(u);
 			values.add(1.0);
 		}
 
@@ -220,7 +268,7 @@ public class UserBasedCollabFiltering implements Serializable {
 		int[] indicesArray = indices.stream().mapToInt(i->i).toArray();
 		double[] valuesArray = values.stream().mapToDouble(i->i).toArray();
 
-		Vector sv = Vectors.sparse(size, indicesArray, valuesArray);
+		Vector sv = Vectors.sparse(349, indicesArray, valuesArray);
 
 		return sv;
 	}
@@ -253,10 +301,10 @@ public class UserBasedCollabFiltering implements Serializable {
 	 * @param invertedIndexMapped: itemId-->userId RDD
 	 * @return
 	 */
-	private int findLargestUserId(
-			JavaPairRDD<String, String> invertedIndexMapped) {
+	private static int findLargestUserId(
+			JavaPairRDD<Integer, Integer> invertedIndexMapped) {
 		//invertedIndexMapped.foreach(t->System.out.println(t._1() + " , " + t._2()));
-		JavaRDD<Integer> userIds = invertedIndexMapped.map((Tuple2<String,String> t)-> Integer.valueOf(t._2()));
+		JavaRDD<Integer> userIds = invertedIndexMapped.map((Tuple2<Integer,Integer> t)->t._2());
 		//userIds.foreach(t->System.out.println(t));
 		int largestUserId = userIds.reduce((a, b) -> Math.max(a, b));
 
@@ -295,32 +343,36 @@ public class UserBasedCollabFiltering implements Serializable {
 	 * @param inputTuple: userId,<list of itemIds>
 	 * @return inverted map from itemId->userId
 	 */
-	private List<Tuple2<String,String>> createInvertedIndex(Tuple2<String,Iterable<String>> inputTuple){
-		List<Tuple2<String,String>> returnList = new ArrayList<Tuple2<String,String>>();
+	private static List<Tuple2<Integer,Integer>> createInvertedIndex(Tuple2<Integer,Iterable<Integer>> inputTuple){
+		List<Tuple2<Integer,Integer>> returnList = new ArrayList<Tuple2<Integer,Integer>>();
 
-		String uId= inputTuple._1();
-		for (String iId:inputTuple._2()){
-			Tuple2<String,String> newTuple = new Tuple2<String, String>(iId, uId);
+		Integer uId= inputTuple._1();
+		for (Integer iId:inputTuple._2()){
+			Tuple2<Integer,Integer> newTuple = new Tuple2<Integer, Integer>(iId, uId);
 			returnList.add(newTuple);
 		}
 		return returnList;
 	}
 
-	/////////////////////////// UNUSED METHODS ////////////////////////////////
 	/**
 	 * Same as printTuple2, but written with inline function
 	 * @param data
 	 */
-	@SuppressWarnings({ "unused", "serial" })
+
 	private void print(
-			JavaPairRDD<String, Iterable<String>> data) {
-		data.foreach(new VoidFunction<Tuple2<String,Iterable<String>>>() {
+			JavaPairRDD<Integer, Iterable<Integer>> data) {
+		data.foreach(new VoidFunction<Tuple2<Integer,Iterable<Integer>>>() {
+
+			/**
+			 * 
+			 */
+			private static final long serialVersionUID = 1L;
 
 			@Override
-			public void call(Tuple2<String, Iterable<String>> t) throws Exception {
+			public void call(Tuple2<Integer, Iterable<Integer>> t) throws Exception {
 				System.out.print(t._1() + " , ");
 
-				for(String tVal:t._2){
+				for(Integer tVal:t._2){
 					System.out.print(tVal + " , ");
 				}
 				System.out.println();
