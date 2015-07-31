@@ -118,7 +118,9 @@ public class Main implements Serializable {
 		// perform user based collaborative filtering
 		/*UserBasedCollabFiltering ucf = new UserBasedCollabFiltering();
 		ucf.performCollaborativeFiltering(file);*/
-		UserBasedCollabFiltering.performCollaborativeFiltering(file);
+		//UserBasedCollabFiltering.performCollaborativeFiltering(file);
+		
+		ItemBasedCollabFiltering.performCollaborativeFiltering(file);
 	}
 
 }
