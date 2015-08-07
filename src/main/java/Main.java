@@ -1,110 +1,21 @@
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Comparator;
-import java.util.List;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import java.util.Map;
-
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.Function;
-import org.apache.spark.api.java.function.PairFlatMapFunction;
-import org.apache.spark.api.java.function.VoidFunction;
-import org.apache.spark.broadcast.Broadcast;
-import org.apache.spark.mllib.linalg.Vector;
-import org.apache.spark.mllib.linalg.Vectors;
-import org.apache.spark.mllib.linalg.distributed.CoordinateMatrix;
-import org.apache.spark.mllib.linalg.distributed.IndexedRow;
-import org.apache.spark.mllib.linalg.distributed.MatrixEntry;
-import org.apache.spark.mllib.linalg.distributed.RowMatrix;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import com.google.common.base.Optional;
-import com.google.common.collect.Iterables;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 import scala.Tuple2;
 
 public class Main implements Serializable {
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 6106269076155338045L;
+
 	public static void main(String[] args) {
 
 		if(args.length !=1){
@@ -114,20 +25,64 @@ public class Main implements Serializable {
 
 		// some file in the form of userId,<comma separated list of itemIds> e.g. u1,i1,i32,i36,i94
 		String file = args[0];
-		
+
 		SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local[2]").set("spark.executor.memory","1g");
 		JavaSparkContext sc = new JavaSparkContext(conf);
 
-	
-		// perform user based collaborative filtering
-		/*UserBasedCollabFiltering ucf = new UserBasedCollabFiltering();
-		ucf.performCollaborativeFiltering(file);*/
-		
-		//UserBasedCollabFiltering.performCollaborativeFiltering(sc, file);
-		//ItemBasedCollabFiltering.performCollaborativeFiltering(sc, file);
-		HybridRec.performCollaborativeFiltering(sc, file);
-		
+		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
+		JavaPairRDD<Integer, Integer> dataFlattened = readData(sc, file);
+
+		// perform recommendation
+		int k = 3;
+		//UserBasedCollabFiltering.performCollaborativeFiltering(sc, dataFlattened, k);
+		//ItemBasedCollabFiltering.performCollaborativeFiltering(sc, dataFlattened,k);
+		HybridRec.performCollaborativeFiltering(sc, dataFlattened, k);
+
 		sc.close();
+	}
+
+	/**
+	 * 
+	 * @param sc: JavaSparkContext
+	 * @param file: File to be read with format: userid, itemid1, itemid2, ...
+	 * @return
+	 */
+	private static JavaPairRDD<Integer, Integer>  readData(JavaSparkContext sc, String file) {
+		// load data : userid, itemid1,itemid2,...
+		JavaRDD<String> data = sc.textFile(file);
+
+		// parse data: userid, <list of itemid> e.g. u3--><i21,i45,i89>
+		JavaRDD<ArrayList<Integer>> dataSplitted = data.map((String line)->splitLine(line));
+		JavaPairRDD<Integer,Iterable<Integer>> dataMapped = dataSplitted.mapToPair((ArrayList<Integer> userItemList)->new Tuple2<Integer, Iterable<Integer>>(userItemList.get(0), 
+				new ArrayList<Integer>(userItemList.subList(1,userItemList.size()))));
+		// print 
+		//dataMapped.foreach(s->System.out.println(s));
+		JavaPairRDD<Integer, Iterable<Integer>> dataMappedFiltered = dataMapped.filter(dm->(((Collection<Integer>) dm._2()).size() > 0));
+		// print 
+		//dataMappedFiltered.foreach(s->System.out.println(s));
+
+		// flatten dataMapped: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
+		JavaPairRDD<Integer, Integer> dataFlattened = dataMappedFiltered.flatMapValues(e->e);
+		dataFlattened.cache();// TODO what if I cache more than available resources?? Does it apply kind of LRU??
+		// print
+		//dataFlattened.foreach(s->System.out.println(s));
+		
+		return dataFlattened;
+	}
+	
+	/**
+	 * 
+	 * @param line: userid, itemid1, itemid2, ...
+	 * @return
+	 */
+	private static ArrayList<Integer> splitLine(String line) {
+		String[] splitted = line.split(",");
+		ArrayList<Integer> intVals = new ArrayList<Integer>(splitted.length);
+		for(String s: splitted){
+			intVals.add(Integer.valueOf(s));
+		}
+
+		return intVals;
 	}
 
 }

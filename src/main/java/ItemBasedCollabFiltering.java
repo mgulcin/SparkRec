@@ -1,11 +1,8 @@
 
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
 import java.util.List;
 
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -20,39 +17,14 @@ import scala.Tuple2;
 
 import com.google.common.base.Optional;
 
-class TupleComparator2 implements Comparator<Tuple2<Integer, Integer>>, Serializable {
-	@Override
-	public int compare(Tuple2<Integer, Integer> tuple1, Tuple2<Integer, Integer> tuple2) {
-		return tuple1._2 <= tuple2._2 ? 0 : 1;
-	}
-}
 
 public class ItemBasedCollabFiltering implements Serializable {
 
-	public static JavaPairRDD<Integer,Integer> performCollaborativeFiltering(JavaSparkContext sc, String file){
+	private static final long serialVersionUID = -2661482178306286702L;
+
+	public static JavaPairRDD<Integer,Integer> performCollaborativeFiltering(JavaSparkContext sc, 
+			JavaPairRDD<Integer, Integer> dataFlattened, int k){
 		
-		// load data : userid, itemid1,itemid2,...
-		JavaRDD<String> data = sc.textFile(file);
-
-		// parse data: userid, <list of itemid> e.g. u3--><i21,i45,i89>
-		JavaRDD<ArrayList<Integer>> dataSplitted = data.map((String line)->splitLine(line));
-		JavaPairRDD<Integer,Iterable<Integer>> dataMapped = dataSplitted.mapToPair((ArrayList<Integer> userItemList)->new Tuple2<Integer, Iterable<Integer>>(userItemList.get(0), 
-				new ArrayList<Integer>(userItemList.subList(1,userItemList.size()))));
-		// print 
-		//dataMapped.foreach(s->System.out.println(s));
-		
-		// get only the users with some items  
-		JavaPairRDD<Integer, Iterable<Integer>> dataMappedFiltered = dataMapped.filter(dm->(((Collection<Integer>) dm._2()).size() > 0));
-		// print 
-		//dataMappedFiltered.foreach(s->System.out.println(s));
-
-		// flatten dataMapped: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
-		JavaPairRDD<Integer, Integer> dataFlattened = dataMappedFiltered.flatMapValues(e->e);
-		dataFlattened.cache();// TODO what if I cache more than available resources?? Does it apply kind of LRU??
-		// print
-		//dataFlattened.foreach(s->System.out.println(s));
-
-
 		// calculate cosine similarity of users 
 		JavaRDD<Vector> vectorOfUsers = createVectorOf(dataFlattened);
 		// print
@@ -60,7 +32,7 @@ public class ItemBasedCollabFiltering implements Serializable {
 
 		RowMatrix matrix = new RowMatrix(vectorOfUsers.rdd());
 		// print
-		JavaRDD<Vector> rows = matrix.rows().toJavaRDD();
+		//JavaRDD<Vector> rows = matrix.rows().toJavaRDD();
 		//rows.foreach(v->System.out.println(v.toString()));
 		
 		// NOTE result is listed for upper triangle, i.e. for j indices larger than i indices
@@ -101,39 +73,12 @@ public class ItemBasedCollabFiltering implements Serializable {
 
 		// get the items that are suggested to target : userid--> recitemId
 		JavaPairRDD<Integer,Integer> recList = joinedMappedFiltered.mapToPair(f->f._2());
-		JavaPairRDD<Integer, Iterable<Integer>> recListConcat = recList.groupByKey();
+		//JavaPairRDD<Integer, Iterable<Integer>> recListConcat = recList.groupByKey();
 		// print
 		//recListConcat.filter(tuple->tuple._1==5).foreach(tuple->printTupleWithIterable(tuple));
 
-		// find frequency of recItems per user
-		JavaPairRDD<Tuple2<Integer, Integer>, Integer> countOfRec = recList.mapToPair(tuple->new Tuple2<Tuple2<Integer, Integer>, Integer>(tuple,1));
-		JavaPairRDD<Tuple2<Integer, Integer>, Integer> freqOfRec = countOfRec.reduceByKey((x,y)-> x+y);
-		JavaPairRDD<Integer, Tuple2<Integer, Integer>> freqOfRecPerUser = freqOfRec.mapToPair(f -> new Tuple2(f._1()._1(), new Tuple2(f._1()._2(), f._2())));
-
-		// select k many recItems based on frequncies
-		JavaPairRDD<Tuple2<Integer, Integer>, Integer> freqOfRecPerUserSwapped = freqOfRecPerUser.mapToPair(tuple->tuple.swap());	
-		JavaPairRDD<Tuple2<Integer, Integer>, Integer>  sorted = freqOfRecPerUserSwapped.sortByKey(new TupleComparator2(), false);
-		JavaPairRDD<Integer, Tuple2<Integer, Integer>> freqOfRecPerUserReSwapped = sorted.mapToPair(tuple->tuple.swap());
-		// print 
-		//freqOfRecPerUserReSwapped.filter(tuple->tuple._1==5).foreach(entry->printTupleWithTuple(entry));
-		JavaPairRDD<Integer, Iterable<Tuple2<Integer, Integer>>> groupedSortedRec = freqOfRecPerUserReSwapped.groupByKey();
-
-		int k = 3;
-		JavaPairRDD<Integer, Iterable<Tuple2<Integer, Integer>>> topk = groupedSortedRec.mapToPair(list->getTopk(k, list));
-		/*// print top-k
-		topk.foreach(t->{
-			System.out.print(t._1() + ", ");
-			for(Tuple2<Integer, Integer> t2:t._2()){
-				System.out.print("(");
-				System.out.print(t2._1() + ", ");
-				System.out.print(t2._2() );
-				System.out.print(")");
-			}
-			System.out.println();
-		});*/
-
-		JavaPairRDD<Integer, Tuple2<Integer, Integer>> topKFlattened = topk.flatMapValues(e->e);
-		JavaPairRDD<Integer,Integer> topKRecItems = topKFlattened.mapToPair(e->new Tuple2<Integer, Integer>(e._1(),e._2()._1()));
+		// find topk recItems per user
+		JavaPairRDD<Integer,Integer> topKRecItems = Utils.getTopK(k, recList);
 		// print
 		topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
 		
@@ -159,22 +104,6 @@ public class ItemBasedCollabFiltering implements Serializable {
 		List<Integer> resVal = dataMappedFiltered.filter((dm->dm._1 == nId)).flatMap(dm->dm._2).collect();
 		return resVal;
 	}
-
-
-
-
-
-	private static ArrayList<Integer> splitLine(String line) {
-		String[] splitted = line.split(",");
-		ArrayList<Integer> intVals = new ArrayList<Integer>(splitted.length);
-		for(String s: splitted){
-			intVals.add(Integer.valueOf(s));
-		}
-
-		return intVals;// shoukd I close sc here? why?
-	}
-
-
 
 
 
