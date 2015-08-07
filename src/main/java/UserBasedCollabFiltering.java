@@ -35,10 +35,7 @@ public class UserBasedCollabFiltering implements Serializable {
 	private static final long serialVersionUID = -1413094281502110275L;
 
 
-	public static void performCollaborativeFiltering(String file){
-		SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local[2]").set("spark.executor.memory","1g");
-		JavaSparkContext sc = new JavaSparkContext(conf);
-
+	public static JavaPairRDD<Integer,Integer> performCollaborativeFiltering(JavaSparkContext sc, String file){
 		// load data : userid, itemid1,itemid2,...
 		JavaRDD<String> data = sc.textFile(file);
 
@@ -142,8 +139,8 @@ public class UserBasedCollabFiltering implements Serializable {
 		JavaPairRDD<Integer,Integer> topKRecItems = topKFlattened.mapToPair(e->new Tuple2<Integer, Integer>(e._1(),e._2()._1()));
 		// print
 		topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
-
-		sc.close();
+		
+		return topKRecItems;
 	}
 
 

@@ -29,10 +29,8 @@ class TupleComparator2 implements Comparator<Tuple2<Integer, Integer>>, Serializ
 
 public class ItemBasedCollabFiltering implements Serializable {
 
-	public static void performCollaborativeFiltering(String file){
-		SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local[2]").set("spark.executor.memory","1g");
-		JavaSparkContext sc = new JavaSparkContext(conf);
-
+	public static JavaPairRDD<Integer,Integer> performCollaborativeFiltering(JavaSparkContext sc, String file){
+		
 		// load data : userid, itemid1,itemid2,...
 		JavaRDD<String> data = sc.textFile(file);
 
@@ -42,6 +40,8 @@ public class ItemBasedCollabFiltering implements Serializable {
 				new ArrayList<Integer>(userItemList.subList(1,userItemList.size()))));
 		// print 
 		//dataMapped.foreach(s->System.out.println(s));
+		
+		// get only the users with some items  
 		JavaPairRDD<Integer, Iterable<Integer>> dataMappedFiltered = dataMapped.filter(dm->(((Collection<Integer>) dm._2()).size() > 0));
 		// print 
 		//dataMappedFiltered.foreach(s->System.out.println(s));
@@ -55,9 +55,14 @@ public class ItemBasedCollabFiltering implements Serializable {
 
 		// calculate cosine similarity of users 
 		JavaRDD<Vector> vectorOfUsers = createVectorOf(dataFlattened);
-		//vectorOfUsers.foreach(v->System.out.println(v.toString()));
+		// print
+		//vectorOfUsers.rdd().toJavaRDD().foreach(v->System.out.println(v.toString()));
 
 		RowMatrix matrix = new RowMatrix(vectorOfUsers.rdd());
+		// print
+		JavaRDD<Vector> rows = matrix.rows().toJavaRDD();
+		//rows.foreach(v->System.out.println(v.toString()));
+		
 		// NOTE result is listed for upper triangle, i.e. for j indices larger than i indices
 		// -- i.e. An n x n sparse upper-triangular matrix of cosine similarities between columns of this matrix.
 		CoordinateMatrix simsPerfect = matrix.columnSimilarities();//TODO write your own cosine sim to learn
@@ -66,7 +71,7 @@ public class ItemBasedCollabFiltering implements Serializable {
 		JavaRDD<MatrixEntry> simEntriesUnionRdd = createFullMatrix(simsPerfect);
 		//JavaRDD<Iterable<MatrixEntry>> groupedSimUnion = simEntriesUnionRdd.groupBy(m->m.i()).values();
 		// print similarities
-		//groupedSimUnion.foreach(entry->print(entry));
+		//simEntriesUnionRdd.filter(m->m.i()==85).groupBy(m->m.i()).values().foreach(entry->printIterable(entry));
 
 		// Create sorted list (based on similarity) of other users for each user	
 		// sort by value and group by i // TODO does this always return sorted list after groupby?
@@ -74,17 +79,17 @@ public class ItemBasedCollabFiltering implements Serializable {
 		JavaRDD<Iterable<MatrixEntry>> groupedSortedSimUnion = sortedSimEntriesUnionRdd.groupBy(m->m.i()).values();
 		//groupedSortedSimUnion.foreach(entry->print(entry));
 
-		// Select most similar N entries 
+		// Select most similar N entries(items) 
 		int N = 10;
 		JavaRDD<MatrixEntry> topN = groupedSortedSimUnion.flatMap((Iterable<MatrixEntry> eList)->getTopN(N, eList));
 		// print top-k
-		//topK.foreach(entry->System.out.println(entry.toString()));
+		//topN.filter(m->m.i()==85).foreach(entry->System.out.println(entry.toString()));
 
 		// Select most similar items (i.e. neighbors)
 		JavaPairRDD<Integer,Integer> neighbors = topN.mapToPair((MatrixEntry topElement)->new Tuple2<Integer,Integer>((int)topElement.i(), (int)topElement.j()));
 		neighbors.cache();
 		// print neighbors
-		//neighbors.foreach(entry->System.out.println(entry.toString()));
+		//neighbors.filter(entry->entry._1==85).foreach(entry->System.out.println(entry.toString()));
 
 		// suggest similar items (neighbior items) to the target users
 		// apply join on dataFlattened and neighbors: i.e (targetUser,item) (item, itemNeighbor)--> item, (targetUser, itemNeighbor)
@@ -96,9 +101,9 @@ public class ItemBasedCollabFiltering implements Serializable {
 
 		// get the items that are suggested to target : userid--> recitemId
 		JavaPairRDD<Integer,Integer> recList = joinedMappedFiltered.mapToPair(f->f._2());
-		//JavaPairRDD<Integer, Iterable<Integer>> recListConcat = recList.groupByKey();
+		JavaPairRDD<Integer, Iterable<Integer>> recListConcat = recList.groupByKey();
 		// print
-		//recListConcat.foreach(tuple->printTuple2(tuple));
+		//recListConcat.filter(tuple->tuple._1==5).foreach(tuple->printTupleWithIterable(tuple));
 
 		// find frequency of recItems per user
 		JavaPairRDD<Tuple2<Integer, Integer>, Integer> countOfRec = recList.mapToPair(tuple->new Tuple2<Tuple2<Integer, Integer>, Integer>(tuple,1));
@@ -110,7 +115,7 @@ public class ItemBasedCollabFiltering implements Serializable {
 		JavaPairRDD<Tuple2<Integer, Integer>, Integer>  sorted = freqOfRecPerUserSwapped.sortByKey(new TupleComparator2(), false);
 		JavaPairRDD<Integer, Tuple2<Integer, Integer>> freqOfRecPerUserReSwapped = sorted.mapToPair(tuple->tuple.swap());
 		// print 
-		//freqOfRecPerUserReSwapped.foreach(entry->printTupleWithTuple(entry));
+		//freqOfRecPerUserReSwapped.filter(tuple->tuple._1==5).foreach(entry->printTupleWithTuple(entry));
 		JavaPairRDD<Integer, Iterable<Tuple2<Integer, Integer>>> groupedSortedRec = freqOfRecPerUserReSwapped.groupByKey();
 
 		int k = 3;
@@ -131,8 +136,8 @@ public class ItemBasedCollabFiltering implements Serializable {
 		JavaPairRDD<Integer,Integer> topKRecItems = topKFlattened.mapToPair(e->new Tuple2<Integer, Integer>(e._1(),e._2()._1()));
 		// print
 		topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
-
-		sc.close();
+		
+		return topKRecItems;
 	}
 
 

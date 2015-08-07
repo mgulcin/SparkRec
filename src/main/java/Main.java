@@ -114,13 +114,20 @@ public class Main implements Serializable {
 
 		// some file in the form of userId,<comma separated list of itemIds> e.g. u1,i1,i32,i36,i94
 		String file = args[0];
+		
+		SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local[2]").set("spark.executor.memory","1g");
+		JavaSparkContext sc = new JavaSparkContext(conf);
+
 	
 		// perform user based collaborative filtering
 		/*UserBasedCollabFiltering ucf = new UserBasedCollabFiltering();
 		ucf.performCollaborativeFiltering(file);*/
-		//UserBasedCollabFiltering.performCollaborativeFiltering(file);
 		
-		ItemBasedCollabFiltering.performCollaborativeFiltering(file);
+		//UserBasedCollabFiltering.performCollaborativeFiltering(sc, file);
+		//ItemBasedCollabFiltering.performCollaborativeFiltering(sc, file);
+		HybridRec.performCollaborativeFiltering(sc, file);
+		
+		sc.close();
 	}
 
 }
