@@ -1,3 +1,7 @@
+package recommender;
+
+import main.Printer;
+import main.Utils;
 
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -8,6 +12,8 @@ import org.apache.spark.mllib.linalg.distributed.MatrixEntry;
 import scala.Serializable;
 import scala.Tuple2;
 
+
+
 import com.google.common.base.Optional;
 
 public class UserBasedCollabFiltering implements Serializable {
@@ -15,7 +21,7 @@ public class UserBasedCollabFiltering implements Serializable {
 	private static final long serialVersionUID = -1413094281502110275L;
 
 
-	public static JavaPairRDD<Integer,Integer> performCollaborativeFiltering(JavaSparkContext sc, 
+	public static JavaPairRDD<Integer,Integer> performRecommendation(JavaSparkContext sc, 
 			JavaPairRDD<Integer, Integer> dataFlattened, int k){
 
 		// calculate cosine similarity of users 
@@ -61,7 +67,7 @@ public class UserBasedCollabFiltering implements Serializable {
 		JavaPairRDD<Integer,Integer> recList = joinedMappedFiltered.mapToPair(f->new Tuple2<Integer,Integer>(f._2()._2(),f._2()._1()));
 		JavaPairRDD<Integer, Iterable<Integer>> recListConcat = recList.groupByKey();
 		// print
-		recListConcat.filter(x->x._1==1).foreach(tuple->Printer.printTupleWithIterable(tuple));
+		//recListConcat.filter(x->x._1==1).foreach(tuple->Printer.printTupleWithIterable(tuple));
 
 		// find topk
 		JavaPairRDD<Integer,Integer> topKRecItems = Utils.getTopK(k, recList);

@@ -1,3 +1,4 @@
+package main;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -11,10 +12,10 @@ import org.apache.spark.mllib.linalg.distributed.CoordinateMatrix;
 import org.apache.spark.mllib.linalg.distributed.MatrixEntry;
 import org.apache.spark.mllib.linalg.distributed.RowMatrix;
 
-import com.google.common.base.Optional;
-
 import scala.Serializable;
 import scala.Tuple2;
+
+import com.google.common.base.Optional;
 
 
 public class Utils {

@@ -1,8 +1,12 @@
+package recommender;
+
+import main.Utils;
 
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 
 import scala.Serializable;
+
 
 
 public class HybridRec implements Serializable {
@@ -19,12 +23,12 @@ public class HybridRec implements Serializable {
 	 * @param k: outputList size
 	 * @return recommended items, e.g. userid--> itemId 
 	 */
-	public static JavaPairRDD<Integer, Integer> performCollaborativeFiltering(JavaSparkContext sc,
+	public static JavaPairRDD<Integer, Integer> performRecommendation(JavaSparkContext sc,
 			JavaPairRDD<Integer, Integer> inputData, int k){
 		
 		// get the output of each rec. method: userid-->rec. itemid
-		JavaPairRDD<Integer, Integer> ucf = UserBasedCollabFiltering.performCollaborativeFiltering(sc, inputData, k);
-		JavaPairRDD<Integer, Integer> icf = ItemBasedCollabFiltering.performCollaborativeFiltering(sc, inputData, k);
+		JavaPairRDD<Integer, Integer> ucf = UserBasedCollabFiltering.performRecommendation(sc, inputData, k);
+		JavaPairRDD<Integer, Integer> icf = ItemBasedCollabFiltering.performRecommendation(sc, inputData, k);
 
 		// combine the outputs
 		JavaPairRDD<Integer, Integer> combinedOutputs = ucf.union(icf);

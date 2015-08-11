@@ -1,3 +1,4 @@
+package main;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -8,7 +9,10 @@ import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 
+import recommender.HybridRec;
 import scala.Tuple2;
+import eval.Evaluate;
+import eval.EvaluationResult;
 
 public class Main implements Serializable {
 	/**
@@ -36,11 +40,11 @@ public class Main implements Serializable {
 
 		// recommend
 		int k = 5;
-		JavaPairRDD<Integer, Integer> recOutput = UserBasedCollabFiltering.performCollaborativeFiltering(sc, trainDataFlattened, k);
+		//JavaPairRDD<Integer, Integer> recOutput = UserBasedCollabFiltering.performCollaborativeFiltering(sc, trainDataFlattened, k);
 		//JavaPairRDD<Integer, Integer> recOutput = ItemBasedCollabFiltering.performCollaborativeFiltering(sc, trainDataFlattened,k);
-		//JavaPairRDD<Integer, Integer> recOutput = HybridRec.performCollaborativeFiltering(sc, trainDataFlattened, k);
+		JavaPairRDD<Integer, Integer> recOutput = HybridRec.performRecommendation(sc, trainDataFlattened, k);
 		// print
-		recOutput.filter(x->x._1==1).foreach(e->System.out.println(e._1 + " , " + e._2));
+		//recOutput.foreach(e->System.out.println(e._1 + " , " + e._2));
 
 		// perform test
 		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89

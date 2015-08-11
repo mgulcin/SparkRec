@@ -1,3 +1,6 @@
+package recommender;
+
+import main.Utils;
 
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -15,7 +18,7 @@ public class ItemBasedCollabFiltering implements Serializable {
 
 	private static final long serialVersionUID = -2661482178306286702L;
 
-	public static JavaPairRDD<Integer,Integer> performCollaborativeFiltering(JavaSparkContext sc, 
+	public static JavaPairRDD<Integer,Integer> performRecommendation(JavaSparkContext sc, 
 			JavaPairRDD<Integer, Integer> dataFlattened, int k){
 		
 		// calculate cosine similarity of users 
