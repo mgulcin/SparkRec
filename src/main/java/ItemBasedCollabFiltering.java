@@ -59,7 +59,7 @@ public class ItemBasedCollabFiltering implements Serializable {
 		// find topk recItems per user
 		JavaPairRDD<Integer,Integer> topKRecItems = Utils.getTopK(k, recList);
 		// print
-		topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
+		//topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
 		
 		return topKRecItems;
 	}

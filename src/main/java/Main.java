@@ -18,26 +18,39 @@ public class Main implements Serializable {
 
 	public static void main(String[] args) {
 
-		if(args.length !=1){
+		if(args.length != 2){
 			System.out.println("Wrong number of arguments. Give a file as input.");
 			System.exit(-1);
 		}
 
 		// some file in the form of userId,<comma separated list of itemIds> e.g. u1,i1,i32,i36,i94
-		String file = args[0];
+		String trainFile = args[0];
+		String testFile = args[1];
 
 		SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local[2]").set("spark.executor.memory","1g");
 		JavaSparkContext sc = new JavaSparkContext(conf);
 
-		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
-		JavaPairRDD<Integer, Integer> dataFlattened = readData(sc, file);
-
 		// perform recommendation
-		int k = 3;
-		//UserBasedCollabFiltering.performCollaborativeFiltering(sc, dataFlattened, k);
-		//ItemBasedCollabFiltering.performCollaborativeFiltering(sc, dataFlattened,k);
-		HybridRec.performCollaborativeFiltering(sc, dataFlattened, k);
+		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
+		JavaPairRDD<Integer, Integer> trainDataFlattened = readData(sc, trainFile);
 
+		// recommend
+		int k = 5;
+		JavaPairRDD<Integer, Integer> recOutput = UserBasedCollabFiltering.performCollaborativeFiltering(sc, trainDataFlattened, k);
+		//JavaPairRDD<Integer, Integer> recOutput = ItemBasedCollabFiltering.performCollaborativeFiltering(sc, trainDataFlattened,k);
+		//JavaPairRDD<Integer, Integer> recOutput = HybridRec.performCollaborativeFiltering(sc, trainDataFlattened, k);
+		// print
+		recOutput.filter(x->x._1==1).foreach(e->System.out.println(e._1 + " , " + e._2));
+
+		// perform test
+		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
+		JavaPairRDD<Integer, Integer> testDataFlattened = readData(sc, testFile);
+		
+		// evaluate
+		EvaluationResult evalResult = Evaluate.evaluate(recOutput,testDataFlattened);
+		// print
+		System.out.println(evalResult.toString());
+		
 		sc.close();
 	}
 
@@ -45,7 +58,7 @@ public class Main implements Serializable {
 	 * 
 	 * @param sc: JavaSparkContext
 	 * @param file: File to be read with format: userid, itemid1, itemid2, ...
-	 * @return
+	 * @return flattenedData: userid, itemid e.g. u3-->i21
 	 */
 	private static JavaPairRDD<Integer, Integer>  readData(JavaSparkContext sc, String file) {
 		// load data : userid, itemid1,itemid2,...
@@ -63,7 +76,7 @@ public class Main implements Serializable {
 
 		// flatten dataMapped: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
 		JavaPairRDD<Integer, Integer> dataFlattened = dataMappedFiltered.flatMapValues(e->e);
-		dataFlattened.cache();// TODO what if I cache more than available resources?? Does it apply kind of LRU??
+		dataFlattened.cache();
 		// print
 		//dataFlattened.foreach(s->System.out.println(s));
 		

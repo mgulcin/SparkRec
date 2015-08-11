@@ -33,7 +33,7 @@ public class UserBasedCollabFiltering implements Serializable {
 		//groupedSortedSimUnion.foreach(entry->print(entry));
 
 		// Select most similar N entries 
-		int N = 2;
+		int N = 5;
 		JavaRDD<MatrixEntry> topN = groupedSortedSimUnion.flatMap((Iterable<MatrixEntry> eList)->Utils.getTopN(N, eList));
 		// print top-k
 		//topK.foreach(entry->System.out.println(entry.toString()));
@@ -59,14 +59,14 @@ public class UserBasedCollabFiltering implements Serializable {
 
 		// get the items that are suggested to target : userid--> recitemId
 		JavaPairRDD<Integer,Integer> recList = joinedMappedFiltered.mapToPair(f->new Tuple2<Integer,Integer>(f._2()._2(),f._2()._1()));
-		//JavaPairRDD<Integer, Iterable<Integer>> recListConcat = recList.groupByKey();
+		JavaPairRDD<Integer, Iterable<Integer>> recListConcat = recList.groupByKey();
 		// print
-		//recListConcat.foreach(tuple->printTuple2(tuple));
+		recListConcat.filter(x->x._1==1).foreach(tuple->Printer.printTupleWithIterable(tuple));
 
 		// find topk
 		JavaPairRDD<Integer,Integer> topKRecItems = Utils.getTopK(k, recList);
 		// print
-		topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
+		//topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
 		
 		return topKRecItems;
 	}
