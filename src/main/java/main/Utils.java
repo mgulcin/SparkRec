@@ -1,5 +1,6 @@
 package main;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -19,7 +20,7 @@ import com.google.common.base.Optional;
 
 
 public class Utils {
-	
+
 	public static Vector createVectorOf(int size, Tuple2<Integer, Iterable<Tuple2<Integer, Integer>>> t){
 		List<Integer> indices = new ArrayList<Integer>();
 		List<Double> values = new ArrayList<Double>();
@@ -42,7 +43,7 @@ public class Utils {
 
 		return sv;
 	}
-	
+
 	public static  Iterable<MatrixEntry> getTopN(int N, Iterable<MatrixEntry> e) {
 		List<MatrixEntry> list = new ArrayList<MatrixEntry>();
 		CollectionUtils.addAll(list, e.iterator());// TODO what if iterable is too large to fit into memory??
@@ -57,7 +58,7 @@ public class Utils {
 
 		return topN;
 	}
-	
+
 	public static Tuple2<Integer, Tuple2<Integer, Integer>> removeOptional(Tuple2<Integer, Tuple2<Integer, Optional<Integer>>> tuple)
 	{
 		if(tuple._2()._2().isPresent()){
@@ -66,7 +67,7 @@ public class Utils {
 			return new Tuple2<Integer, Tuple2<Integer, Integer>>(tuple._1(), new Tuple2<Integer, Integer>(tuple._2()._1(), -1));
 		}
 	}
-		
+
 	public static Vector countVals(Integer size, Iterable<Integer> valList){
 		List<Integer> indices = new ArrayList<Integer>();
 		List<Double> values = new ArrayList<Double>();
@@ -83,7 +84,7 @@ public class Utils {
 
 		return sv;
 	}
-	
+
 	/**
 	 * 
 	 * @param invertedIndexMapped: keyId-->valueId RDD
@@ -98,13 +99,13 @@ public class Utils {
 
 		return largestUserId;
 	}
-		
+
 	public static JavaRDD<MatrixEntry> calculateCosSim(JavaRDD<Vector> inputVectorRdd){
 		RowMatrix matrix = new RowMatrix(inputVectorRdd.rdd());
 		// print
 		//JavaRDD<Vector> rows = matrix.rows().toJavaRDD();
 		//rows.foreach(v->System.out.println(v.toString()));
-		
+
 		// NOTE result is listed for upper triangle, i.e. for j indices larger than i indices
 		// -- i.e. An n x n sparse upper-triangular matrix of cosine similarities between columns of this matrix.
 		CoordinateMatrix simsPerfect = matrix.columnSimilarities();//TODO write your own cosine sim to learn
@@ -114,10 +115,10 @@ public class Utils {
 		//JavaRDD<Iterable<MatrixEntry>> groupedSimUnion = simEntriesUnionRdd.groupBy(m->m.i()).values();
 		// print similarities
 		//simEntriesUnionRdd.filter(m->m.i()==85).groupBy(m->m.i()).values().foreach(entry->printIterable(entry));
-		
+
 		return simEntriesUnionRdd;
 	}
-	
+
 	private static  JavaRDD<MatrixEntry> createFullMatrix(
 			CoordinateMatrix simsPerfect) {
 		JavaRDD<MatrixEntry> simEntriesUpperRdd = simsPerfect.entries().toJavaRDD();
@@ -136,48 +137,65 @@ public class Utils {
 
 		return simEntriesUnionRdd;
 	}
-	
+
+	/**
+	 * 
+	 * @param k: output list size
+	 * @param recList: list of recommendation in forma of userid-->item id
+	 * @return: top-k items based on frequency
+	 */
 	public static JavaPairRDD<Integer,Integer> getTopK(int k, JavaPairRDD<Integer, Integer> recList){
 		JavaPairRDD<Tuple2<Integer, Integer>, Integer> countOfRec = recList.mapToPair(tuple->new Tuple2<Tuple2<Integer, Integer>, Integer>(tuple,1));
 		JavaPairRDD<Tuple2<Integer, Integer>, Integer> freqOfRec = countOfRec.reduceByKey((x,y)-> x+y);
 		JavaPairRDD<Integer, Tuple2<Integer, Integer>> freqOfRecPerUser = freqOfRec.mapToPair(f -> new Tuple2<Integer,Tuple2<Integer, Integer> >(f._1()._1(), new Tuple2<Integer,Integer>(f._1()._2(), f._2())));
 
-		// select k many recItems based on frequencies
+		// select k many recItems based on frequencies // TODO what if equal frequency?
 		JavaPairRDD<Tuple2<Integer, Integer>, Integer> freqOfRecPerUserSwapped = freqOfRecPerUser.mapToPair(tuple->tuple.swap());	
-		JavaPairRDD<Tuple2<Integer, Integer>, Integer>  sorted = freqOfRecPerUserSwapped.sortByKey(new TupleComparator(), false);
+		JavaPairRDD<Tuple2<Integer, Integer>, Integer>  sorted = freqOfRecPerUserSwapped.sortByKey(new TupleComparator(), false);		
 		JavaPairRDD<Integer, Tuple2<Integer, Integer>> freqOfRecPerUserReSwapped = sorted.mapToPair(tuple->tuple.swap());
 		JavaPairRDD<Integer, Iterable<Tuple2<Integer, Integer>>> groupedSortedRec = freqOfRecPerUserReSwapped.groupByKey();
-		JavaPairRDD<Integer, Iterable<Tuple2<Integer, Integer>>> topk = groupedSortedRec.mapToPair(list->getTopk(k, list));
 		
+		// print
+		//groupedSortedRec.filter(x->x._1==1).foreach(e->System.out.println(e._1 + " , " + e._2));
+		
+		JavaPairRDD<Integer, Iterable<Tuple2<Integer, Integer>>> topk = groupedSortedRec.mapToPair(list->getTopk(k, list));
+
 		// return new list of rec. items
 		JavaPairRDD<Integer, Tuple2<Integer, Integer>> topKFlattened = topk.flatMapValues(e->e);
 		JavaPairRDD<Integer,Integer> topKRecItems = topKFlattened.mapToPair(e->new Tuple2<Integer, Integer>(e._1(),e._2()._1()));
-		
+
 		// print
-		//topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
-		
+		//topKRecItems.filter(x->x._1==1).foreach(e->System.out.println(e._1 + " , " + e._2));
+
 		return topKRecItems;
 	}
-	
+
+	/**
+	 * 
+	 * @param k: outputList size
+	 * @param list2: input data, format: target userid, list of <itemid, frequency of item recommendation>
+	 * @return top-k elements from the input data
+	 */
 	private static  Tuple2<Integer, Iterable<Tuple2<Integer, Integer>>>  getTopk(int k, Tuple2<Integer, Iterable<Tuple2<Integer, Integer>>> list2) {
-		
+
 		Integer targetUserId = list2._1;
-		
+
 		List<Tuple2<Integer, Integer>> recList = new ArrayList<Tuple2<Integer,Integer>>();
 		CollectionUtils.addAll(recList, list2._2.iterator());
-		
+		Collections.sort(recList,new TupleComparatorByKey());// sort by frequency (descending), then by itemid (ascending)
+
 		if(recList.size() < k){
 			k = recList.size();
 		}
-		
+
 		List<Tuple2<Integer,Integer>> topK = new ArrayList<Tuple2<Integer,Integer>>(recList.subList(0, k));
 
-		
+
 		return new Tuple2<Integer, Iterable<Tuple2<Integer, Integer>>>(targetUserId, topK);
 	}
-	
+
 	/// unused methods
-	
+
 	private static Tuple2<Integer,Iterable<Integer>> selectItems(
 			JavaPairRDD<Integer, Iterable<Integer>> dataMappedFiltered,
 			Integer nId, Integer tuId) {
@@ -193,7 +211,7 @@ public class Utils {
 		return resVal;
 	}
 
-	
+
 	private boolean isElementOf(Tuple2<Integer, Iterable<Integer>> dm,
 			JavaPairRDD<Integer, Integer> neighborsSwapped) {
 		boolean retVal = false;
@@ -212,5 +230,30 @@ class TupleComparator implements Comparator<Tuple2<Integer, Integer>>, Serializa
 	@Override
 	public int compare(Tuple2<Integer, Integer> tuple1, Tuple2<Integer, Integer> tuple2) {
 		return tuple1._2 <= tuple2._2 ? 0 : 1;
+	}
+}
+
+class TupleComparatorByKey implements Comparator<Tuple2<Integer, Integer>>, Serializable {
+	private static final long serialVersionUID = 8204911924272948547L;
+
+	@Override
+	public int compare(Tuple2<Integer, Integer> tuple1, Tuple2<Integer, Integer> tuple2) {
+		int retVal = -1;
+		
+		if(tuple1._2 < tuple2._2){
+			retVal = 1;
+		} else if(tuple1._2 > tuple2._2){
+			retVal = -1;
+		} else {
+			if(tuple1._1 < tuple2._1){
+				retVal = -1;
+			} else if(tuple1._1 > tuple2._1){
+				retVal = 1;
+			} else {
+				retVal = 0;
+			}
+		}
+		
+		return retVal;
 	}
 }

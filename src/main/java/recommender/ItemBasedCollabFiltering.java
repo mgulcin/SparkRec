@@ -17,24 +17,37 @@ import com.google.common.base.Optional;
 public class ItemBasedCollabFiltering implements Serializable {
 
 	private static final long serialVersionUID = -2661482178306286702L;
+	
+	// number of most similar entries(items)
+	private static int N = 5;
+	
 
+	/**
+	 * 1- Calculate similarity among items
+	 * 2- Collect N-similar items to the ones that are used by the target user
+	 * 3- Collect k-many items by integrating the items identified in step-2 
+	 * 4- Return top-k items
+	 * @param sc
+	 * @param dataFlattened: userid-->itemid
+	 * @param k: output list size
+	 * @return recommended items
+	 */
 	public static JavaPairRDD<Integer,Integer> performRecommendation(JavaSparkContext sc, 
 			JavaPairRDD<Integer, Integer> dataFlattened, int k){
 		
-		// calculate cosine similarity of users 
+		// calculate cosine similarity of items
 		JavaRDD<Vector> vectorOfUsers = createVectorOf(dataFlattened);
 		// print
 		//vectorOfUsers.rdd().toJavaRDD().foreach(v->System.out.println(v.toString()));
 		JavaRDD<MatrixEntry> simEntriesUnionRdd = Utils.calculateCosSim(vectorOfUsers);
 		
-		// Create sorted list (based on similarity) of other users for each user	
+		// Create sorted list (based on similarity) of other items	
 		// sort by value and group by i // TODO does this always return sorted list after groupby?
 		JavaRDD<MatrixEntry> sortedSimEntriesUnionRdd = simEntriesUnionRdd.sortBy(x->x.value(),false,1);
 		JavaRDD<Iterable<MatrixEntry>> groupedSortedSimUnion = sortedSimEntriesUnionRdd.groupBy(m->m.i()).values();
 		//groupedSortedSimUnion.foreach(entry->print(entry));
 
 		// Select most similar N entries(items) 
-		int N = 10;
 		JavaRDD<MatrixEntry> topN = groupedSortedSimUnion.flatMap((Iterable<MatrixEntry> eList)->Utils.getTopN(N, eList));
 		// print top-k
 		//topN.filter(m->m.i()==85).foreach(entry->System.out.println(entry.toString()));
@@ -45,7 +58,7 @@ public class ItemBasedCollabFiltering implements Serializable {
 		// print neighbors
 		//neighbors.filter(entry->entry._1==85).foreach(entry->System.out.println(entry.toString()));
 
-		// suggest similar items (neighbior items) to the target users
+		// suggest similar items (neighbor items) to the target user
 		// apply join on dataFlattened and neighbors: i.e (targetUser,item) (item, itemNeighbor)--> item, (targetUser, itemNeighbor)
 
 		JavaPairRDD<Integer,Integer> dataFlattenedSwapped = dataFlattened.mapToPair((Tuple2<Integer,Integer>n)->n.swap());
@@ -89,5 +102,15 @@ public class ItemBasedCollabFiltering implements Serializable {
 
 		return retVector;
 	}
+	
+	public static int getN() {
+		return N;
+	}
+
+
+	public static void setN(int n) {
+		N = n;
+	}
+
 
 }

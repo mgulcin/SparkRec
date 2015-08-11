@@ -17,7 +17,10 @@ public class HybridRec implements Serializable {
 	private static final long serialVersionUID = 1L;
 
 	/**
-	 * 
+	 * 1- Get recommendations using user-based cf
+	 * 2- Get recommendations using item-based cf
+	 * 3- Combine recommendations from step-1 and step-2
+	 * 4- Return top-k items 
 	 * @param sc
 	 * @param dataFlattened: input data, e.g. userid--> itemId 
 	 * @param k: outputList size

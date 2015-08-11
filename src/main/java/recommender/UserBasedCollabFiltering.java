@@ -19,8 +19,20 @@ import com.google.common.base.Optional;
 public class UserBasedCollabFiltering implements Serializable {
 
 	private static final long serialVersionUID = -1413094281502110275L;
+	
+	// number of neighbors
+	private static int N = 5;
 
-
+	/**
+	 * 1- Calculate similarity among users
+	 * 2- Collect N-similar users (neighbors) to the target user
+	 * 3- Collect k-many items by integrating the items used by the neighbors
+	 * 4- Return top-k items
+	 * @param sc
+	 * @param dataFlattened: userid-->itemid
+	 * @param k: output list size
+	 * @return recommended items
+	 */
 	public static JavaPairRDD<Integer,Integer> performRecommendation(JavaSparkContext sc, 
 			JavaPairRDD<Integer, Integer> dataFlattened, int k){
 
@@ -39,7 +51,6 @@ public class UserBasedCollabFiltering implements Serializable {
 		//groupedSortedSimUnion.foreach(entry->print(entry));
 
 		// Select most similar N entries 
-		int N = 5;
 		JavaRDD<MatrixEntry> topN = groupedSortedSimUnion.flatMap((Iterable<MatrixEntry> eList)->Utils.getTopN(N, eList));
 		// print top-k
 		//topK.foreach(entry->System.out.println(entry.toString()));
@@ -122,5 +133,13 @@ public class UserBasedCollabFiltering implements Serializable {
 		return retVector;
 	}	
 	
+	public static int getN() {
+		return N;
+	}
+
+
+	public static void setN(int n) {
+		N = n;
+	}
 
 }
