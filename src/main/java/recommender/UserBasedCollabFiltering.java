@@ -65,7 +65,7 @@ public class UserBasedCollabFiltering implements Serializable {
 
 		// get the items that are suggested to target : userid--> recitemId
 		JavaPairRDD<Integer,Integer> recList = joinedMappedFiltered.mapToPair(f->new Tuple2<Integer,Integer>(f._2()._2(),f._2()._1()));
-		JavaPairRDD<Integer, Iterable<Integer>> recListConcat = recList.groupByKey();
+		//JavaPairRDD<Integer, Iterable<Integer>> recListConcat = recList.groupByKey();
 		// print
 		//recListConcat.filter(x->x._1==1).foreach(tuple->Printer.printTupleWithIterable(tuple));
 
