@@ -15,6 +15,19 @@ public class HybridRec implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 1L;
+	private UserBasedCollabFiltering ucf;
+	private ItemBasedCollabFiltering icf;
+	
+	
+	
+
+	public HybridRec(int N) {
+		super();
+		ucf = new UserBasedCollabFiltering(N);
+		icf = new ItemBasedCollabFiltering(N);
+		
+	}
+
 
 	/**
 	 * 1- Get recommendations using user-based cf
@@ -26,15 +39,15 @@ public class HybridRec implements Serializable {
 	 * @param k: outputList size
 	 * @return recommended items, e.g. userid--> itemId 
 	 */
-	public static JavaPairRDD<Integer, Integer> performRecommendation(JavaSparkContext sc,
+	public JavaPairRDD<Integer, Integer> performRecommendation(JavaSparkContext sc,
 			JavaPairRDD<Integer, Integer> inputData, int k){
 		
 		// get the output of each rec. method: userid-->rec. itemid
-		JavaPairRDD<Integer, Integer> ucf = UserBasedCollabFiltering.performRecommendation(sc, inputData, k);
-		JavaPairRDD<Integer, Integer> icf = ItemBasedCollabFiltering.performRecommendation(sc, inputData, k);
+		JavaPairRDD<Integer, Integer> ucfRecs = ucf.performRecommendation(sc, inputData, k);
+		JavaPairRDD<Integer, Integer> icfRecs = icf.performRecommendation(sc, inputData, k);
 
 		// combine the outputs
-		JavaPairRDD<Integer, Integer> combinedOutputs = ucf.union(icf);
+		JavaPairRDD<Integer, Integer> combinedOutputs = ucfRecs.union(icfRecs);
 		JavaPairRDD<Integer,Integer> topKRecItems = Utils.getTopK(k, combinedOutputs);
 		// print
 		//topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));

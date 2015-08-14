@@ -19,8 +19,22 @@ public class ItemBasedCollabFiltering implements Serializable {
 	private static final long serialVersionUID = -2661482178306286702L;
 	
 	// number of most similar entries(items)
-	private static int N = 5;
+	private int N;
 	
+
+	public ItemBasedCollabFiltering(int n) {
+		super();
+		N = n;
+	}
+
+	public int getN() {
+		return N;
+	}
+
+
+	public void setN(int n) {
+		N = n;
+	}
 
 	/**
 	 * 1- Calculate similarity among items
@@ -32,7 +46,7 @@ public class ItemBasedCollabFiltering implements Serializable {
 	 * @param k: output list size
 	 * @return recommended items
 	 */
-	public static JavaPairRDD<Integer,Integer> performRecommendation(JavaSparkContext sc, 
+	public JavaPairRDD<Integer,Integer> performRecommendation(JavaSparkContext sc, 
 			JavaPairRDD<Integer, Integer> dataFlattened, int k){
 		
 		// calculate cosine similarity of items
@@ -85,7 +99,7 @@ public class ItemBasedCollabFiltering implements Serializable {
 	 * @param data: userId --> itemIdRDD
 	 * @return SparseVector of user freq. for each item
 	 */
-	private static  JavaRDD<Vector> createVectorOf(JavaPairRDD<Integer, Integer> dataFlattened) {
+	private JavaRDD<Vector> createVectorOf(JavaPairRDD<Integer, Integer> dataFlattened) {
 		JavaRDD<Vector> retVector = null;
 
 		int largestValId = Utils.findLargestValueId(dataFlattened);
@@ -103,14 +117,5 @@ public class ItemBasedCollabFiltering implements Serializable {
 		return retVector;
 	}
 	
-	public static int getN() {
-		return N;
-	}
-
-
-	public static void setN(int n) {
-		N = n;
-	}
-
 
 }

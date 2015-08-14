@@ -21,7 +21,21 @@ public class UserBasedCollabFiltering implements Serializable {
 	private static final long serialVersionUID = -1413094281502110275L;
 	
 	// number of neighbors
-	private static int N = 5;
+	private int N;
+	
+	public UserBasedCollabFiltering(int n) {
+		N = n;
+	}
+
+
+	public int getN() {
+		return N;
+	}
+
+
+	public void setN(int n) {
+		N = n;
+	}
 
 	/**
 	 * 1- Calculate similarity among users
@@ -33,7 +47,7 @@ public class UserBasedCollabFiltering implements Serializable {
 	 * @param k: output list size
 	 * @return recommended items
 	 */
-	public static JavaPairRDD<Integer,Integer> performRecommendation(JavaSparkContext sc, 
+	public JavaPairRDD<Integer,Integer> performRecommendation(JavaSparkContext sc, 
 			JavaPairRDD<Integer, Integer> dataFlattened, int k){
 
 		// calculate cosine similarity of users 
@@ -133,13 +147,6 @@ public class UserBasedCollabFiltering implements Serializable {
 		return retVector;
 	}	
 	
-	public static int getN() {
-		return N;
-	}
-
-
-	public static void setN(int n) {
-		N = n;
-	}
+	
 
 }

@@ -42,9 +42,13 @@ public class Main implements Serializable {
 
 		// recommend
 		int k = 5;
-		JavaPairRDD<Integer, Integer> recOutput = UserBasedCollabFiltering.performRecommendation(sc, trainDataFlattened, k);
-		//JavaPairRDD<Integer, Integer> recOutput = ItemBasedCollabFiltering.performRecommendation(sc, trainDataFlattened,k);
-		//JavaPairRDD<Integer, Integer> recOutput = HybridRec.performRecommendation(sc, trainDataFlattened, k);
+		int N = 10;
+		//UserBasedCollabFiltering ucf = new UserBasedCollabFiltering(N);
+		//ItemBasedCollabFiltering icf = new ItemBasedCollabFiltering(N);
+		HybridRec hybrid = new HybridRec(N);
+		//JavaPairRDD<Integer, Integer> recOutput = ucf.performRecommendation(sc, trainDataFlattened, k);
+		//JavaPairRDD<Integer, Integer> recOutput = icf.performRecommendation(sc, trainDataFlattened,k);
+		JavaPairRDD<Integer, Integer> recOutput = hybrid.performRecommendation(sc, trainDataFlattened, k);
 		// print
 		//recOutput.filter(x->x._1 == 1).foreach(e->System.out.println(e._1 + " , " + e._2));
 
