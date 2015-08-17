@@ -3,6 +3,7 @@ package main;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
@@ -11,6 +12,7 @@ import org.apache.spark.api.java.JavaSparkContext;
 
 import recommender.HybridRec;
 import recommender.ItemBasedCollabFiltering;
+import recommender.MultiObjectiveRec;
 import recommender.UserBasedCollabFiltering;
 import scala.Tuple2;
 import eval.Evaluate;
@@ -39,16 +41,22 @@ public class Main implements Serializable {
 		// perform recommendation
 		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
 		JavaPairRDD<Integer, Integer> trainDataFlattened = readData(sc, trainFile);
+		
+		// inclusion of multiple features
+		List<JavaPairRDD<Integer, Integer>> inputDataList = new ArrayList<JavaPairRDD<Integer,Integer>>();
+		inputDataList.add(trainDataFlattened);
 
 		// recommend
 		int k = 5;
 		int N = 10;
 		//UserBasedCollabFiltering ucf = new UserBasedCollabFiltering(N);
 		//ItemBasedCollabFiltering icf = new ItemBasedCollabFiltering(N);
-		HybridRec hybrid = new HybridRec(N);
+		//HybridRec hybrid = new HybridRec(N);
+		MultiObjectiveRec moRec = new MultiObjectiveRec(N);
 		//JavaPairRDD<Integer, Integer> recOutput = ucf.performRecommendation(sc, trainDataFlattened, k);
 		//JavaPairRDD<Integer, Integer> recOutput = icf.performRecommendation(sc, trainDataFlattened,k);
-		JavaPairRDD<Integer, Integer> recOutput = hybrid.performRecommendation(sc, trainDataFlattened, k);
+		//JavaPairRDD<Integer, Integer> recOutput = hybrid.performRecommendation(sc, trainDataFlattened, k);
+		JavaPairRDD<Integer, Integer> recOutput = moRec.performRecommendation(sc, inputDataList, k);
 		// print
 		//recOutput.filter(x->x._1 == 1).foreach(e->System.out.println(e._1 + " , " + e._2));
 

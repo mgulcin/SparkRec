@@ -58,6 +58,44 @@ public class Utils {
 
 		return topN;
 	}
+	
+
+	public static  Iterable<MatrixEntry> getTopNPlusEquals(int N, Iterable<MatrixEntry> eList) {
+		List<MatrixEntry> list = new ArrayList<MatrixEntry>();
+		CollectionUtils.addAll(list, eList.iterator());
+		Comparator<MatrixEntry> comp = Comparator.comparing(x -> -1* x.value());
+		Collections.sort(list,comp);// TODO should I call comparator here?
+
+		if(list.size() < N){
+			N = list.size();
+		}
+		List<MatrixEntry> topN = new ArrayList<MatrixEntry>(list.subList(0, N));
+		
+		// get the value of the last item
+		double lastSimVal = topN.get(topN.size()-1).value();
+		
+		// add the ones which have the same simVal as the last one
+		for(int i = N;  i<list.size();i++){
+			// it cannot be larger, so control only equality
+			MatrixEntry entry = topN.get(i);
+			if(entry.value() == lastSimVal){
+				// add this entry to the output
+				topN.add(entry);
+				
+			} else if(topN.get(i).value() > lastSimVal){
+				System.out.println("Error in sort!!!");
+				//throw new Exception("Error in sort!!!");
+				System.exit(-1);
+				
+			}else {
+				// since we sorted by values, if we see a smaller value stop looping
+				break;
+			}
+		}
+
+
+		return topN;
+	}
 
 	public static Tuple2<Integer, Tuple2<Integer, Integer>> removeOptional(Tuple2<Integer, Tuple2<Integer, Optional<Integer>>> tuple)
 	{
@@ -222,6 +260,7 @@ public class Utils {
 		}
 		return retVal;
 	}
+
 }
 
 class TupleComparator implements Comparator<Tuple2<Integer, Integer>>, Serializable {
