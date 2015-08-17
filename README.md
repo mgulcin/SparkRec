@@ -1,5 +1,5 @@
 # SparkRec 
-Recommendation framework written in Spark
+Recommendation framework written in Spark/Java
 * Performs user-based or item-based collaborative filtering
 * Performs hybrid recommendation by combining user-based and item-based collaborative filtering
 * Performs multi-objective optimization based rec, following the idea introduced in *(i)*
