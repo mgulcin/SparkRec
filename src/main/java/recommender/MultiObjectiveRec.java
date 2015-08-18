@@ -2,6 +2,7 @@ package recommender;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 
 import main.Printer;
@@ -11,6 +12,7 @@ import org.apache.commons.collections.map.HashedMap;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.distributed.MatrixEntry;
 
@@ -71,14 +73,14 @@ public class MultiObjectiveRec implements Serializable {
 
 			// add to the list
 			simList.add(mostSimUsers);
-			*/
-			
+			 */
+
 			// add to the list
 			simList.add(simEntriesUnionRdd);
 		}
 
 		// select N non-domainated users
-		JavaPairRDD<Integer, Integer> neighbors = selectNonDominateds(simList);
+		JavaPairRDD<Integer, Integer> neighbors = selectNonDominateds(simList, sc);
 
 		// find items to recommend 
 		// TODO copied from UserBased collab filtering--> find a better design!!
@@ -118,8 +120,8 @@ public class MultiObjectiveRec implements Serializable {
 	}
 
 
-	private JavaPairRDD<Integer, Integer> selectNonDominateds(List<JavaRDD<MatrixEntry>> simList) {
-		
+	private JavaPairRDD<Integer, Integer> selectNonDominateds(List<JavaRDD<MatrixEntry>> simList, JavaSparkContext sc) {
+
 		// convert list<matrixEntry> to (targetUser,otherUser) -->FeatureSim pairs (for all type of data)
 		JavaPairRDD<Tuple2<Long,Long>,FeatureSim> allSimPairs = null;
 		for(int i=0; i<simList.size(); i++){
@@ -128,7 +130,7 @@ public class MultiObjectiveRec implements Serializable {
 			JavaPairRDD<Tuple2<Long,Long>,FeatureSim> simMap = featureBasedSim.mapToPair(
 					entry->new Tuple2<Tuple2<Long,Long>,FeatureSim>(
 							new Tuple2<Long,Long>(entry.i(),entry.j()), new FeatureSim(index, entry.value())));
-			
+
 			//TODO is there a better way to do this?
 			if(allSimPairs == null){
 				allSimPairs = simMap;
@@ -136,21 +138,21 @@ public class MultiObjectiveRec implements Serializable {
 				allSimPairs.union(simMap);
 			}
 		}
-		
+
 		/*// print for targetUser=76
 		allSimPairs.filter(e->e._1._1 == 76).foreach(e->System.out.println("Target: " + e._1._1 +
 				" Other: " + e._1._2 +
 				" Sim: " + e._2));*/
-		
+
 		// TODO used groupby :( can I combine this and the next with reduceBy??
 		JavaPairRDD<Tuple2<Long, Long>, Iterable<FeatureSim>> allPairsGrouped = allSimPairs.groupByKey();
-		
+
 		// targetUser --> (otherUser, FeatureSim list)
 		JavaPairRDD<Long,Tuple2<Long,Iterable<FeatureSim>>> allPairs = allPairsGrouped.mapToPair(entry->new Tuple2(entry._1._1, new Tuple2(entry._1._2,entry._2)));
-		
+
 		/*// print for targetUser=76
 		allPairs.filter(e->e._1 == 76).foreach(e->Printer.printSimList(e));*/
-		
+
 		// cartesian: (targetUser --> (otherUser, FeatureSim list)) --> (targetUser --> (otherUser, FeatureSim list))
 		// get only if targetUser's are same
 		// and update entry to targetUser --> ((otherUser, FeatureSim list), (otherUser, FeatureSim list))
@@ -158,53 +160,95 @@ public class MultiObjectiveRec implements Serializable {
 				allPairs.cartesian(allPairs).filter(tupleOfTuple->tupleOfTuple._1._1.equals(tupleOfTuple._2._1)).
 				mapToPair(tupleOfTuple-> new Tuple2<Long, Tuple2<Tuple2<Long,Iterable<FeatureSim>>, Tuple2<Long,Iterable<FeatureSim>>>>
 				(tupleOfTuple._1._1, new Tuple2(tupleOfTuple._1._2,tupleOfTuple._2._2)));
-				
+
 		/*//print target:76 user1:152
 		System.out.println(cartesianAllPairs.count());
 		cartesianAllPairs.filter(e->e._1 == 76 && e._2._1._1==152).foreach(x->Printer.printCartesianSimList(x));*/
-		
+
 		// for each target user, find if user1 dominates user2
 		JavaPairRDD<Long, Tuple2<Tuple2<Long,Long>, Boolean>> dominanceInfo  = cartesianAllPairs.mapToPair(tupleOfCartesian->
-			new Tuple2<Long, Tuple2<Tuple2<Long,Long>, Boolean>>(tupleOfCartesian._1, doesDominate(tupleOfCartesian._2)));
-		
-		//
-		
+		new Tuple2<Long, Tuple2<Tuple2<Long,Long>, Boolean>>(tupleOfCartesian._1, doesDominate(tupleOfCartesian._2)));
+
 		/*//print target:76 user1:152
 		dominanceInfo.filter(e->e._1 == 76 && e._2._1._1==152).foreach(e->System.out.println("Target: " + e._1 +
 				" Others: " + e._2._1._1 + " , " + e._2._1._2 +
 				" 1Dominates2: " + e._2._2));*/
-		
-		// select non-dominated(neighbor) users for each target
-		// create 'dominated' users list for each target user
-		JavaPairRDD<Long,Long> dominatedUsers = dominanceInfo
-				.mapToPair(e->new Tuple2<Long,Long>(e._1, findDominated(e._2)))
-				.filter(e->e._2 != null);
-		
-		//print target:76 
-		//dominatedUsers.filter(e->e._1 == 76).foreach(e->System.out.println(e._1 + " " + e._2));
-		
+
 		// all candidate neighbors for each target user
-		// allPairs: targetUser --> (otherUser, FeatureSim list)
 		JavaPairRDD<Long,Long> candidateUsers = allPairs.mapToPair(entry->new Tuple2<Long, Long>(entry._1, entry._2._1));
+				
+		// all target users
+		JavaRDD<Long> targetUsers = allPairs.keys();
 		
-		// find candidateUsers - dominatedUsers for each target TODO What if subtraction return less than N users??
-		JavaPairRDD<Long, Long> nonDominateds = candidateUsers.subtract(dominatedUsers);
+		// filter out target users who have already collected predefined number of neighbors 
+		JavaPairRDD<Long, Integer> neighborCounts = targetUsers.mapToPair(e->new Tuple2<Long,Integer>(e,0));
+		JavaRDD<Long> targetUsersFiltered = neighborCounts.filter(e->e._2 < N).keys();
 		
-		//print target:76 
-		//nonDominateds.filter(e->e._1 == 76).foreach(e->System.out.println(e._1 + " " + e._2));
+		// remove non-targetUsersFiltered users from dominanceInfo - not to do any unnecessary calculation
+		Broadcast<HashSet<Long>> targetUserBC = sc.broadcast(new HashSet<Long>(targetUsersFiltered.collect()));
+		JavaPairRDD<Long, Tuple2<Tuple2<Long, Long>, Boolean>> dominanceInfoFilteredByTarget = dominanceInfo.filter(e->targetUserBC.value().contains(e._1)==false);
 		
-		JavaPairRDD<Integer, Integer> neighbors = nonDominateds.mapToPair(entry->new Tuple2<Integer, Integer>(entry._1.intValue(), entry._2.intValue()));
+		
+		// select non-dominated(neighbor) users for each target seen in targetUsersFiltered
+		JavaPairRDD<Long, Long> neighborsTemp = selectNeighbors(dominanceInfoFilteredByTarget,candidateUsers);
+		
+		neighborCounts = neighborsTemp.mapToPair(e-> new Tuple2<Long,Integer>(e._1,1)).reduceByKey((x,y)->x+y);
+		neighborCounts.foreach(e->System.out.println("#Neighbors: " + e._1 + " " + e._2));
+		
+		-------------
+		need to do some calculations here to collect more than 1 neighbors
+		// target --> (user1,user2, dominance), neighborOfTarget
+		JavaPairRDD<Long, Tuple2<Tuple2<Tuple2<Long, Long>, Boolean>, Long>> dominanceAndNeighbors = dominanceInfo.join(neighborsTemp);
+		JavaPairRDD<Long, Tuple2<Tuple2<Long,Long>, Boolean>> dominanceInfoFiltered = dominanceAndNeighbors.
+				filter(e->e._2._1._1._1 != e._2._2).
+				mapToPair(e->new Tuple2(e._1, e._2._1));
+	---
+	
+		JavaPairRDD<Integer, Integer> neighbors = null;
 		return neighbors;
 	}
 
 
+
+
+	private JavaPairRDD<Long, Long> selectNeighbors(
+			JavaPairRDD<Long, Tuple2<Tuple2<Long, Long>, Boolean>> dominanceInfo, 
+			JavaPairRDD<Long, Long> candidateUsers) {
+
+		// create 'dominated' users list for each target user
+		JavaPairRDD<Long,Long> dominatedUsers = dominanceInfo
+				.mapToPair(e->new Tuple2<Long,Long>(e._1, findDominated(e._2)))
+				.filter(e->e._2 != null);
+
+		//print target:76 
+		//dominatedUsers.filter(e->e._1 == 76).foreach(e->System.out.println("Dominated: " + e._1 + " " + e._2));
+
+		// find candidateUsers - dominatedUsers for each target TODO What if subtraction return less than N users??
+		JavaPairRDD<Long, Long> nonDominateds = candidateUsers.subtract(dominatedUsers);
+
+		//print target:76 
+		//System.out.println("#Neigbors: " +neighbors.filter(e->e._1 == 76).count());
+		//neighbors.filter(e->e._1 == 76).foreach(e->System.out.println("Neigbors: " + e._1 + " " + e._2));
+
+		return nonDominateds;
+	}
+
+
+	/**
+	 * Find if user2 is dominated by user1
+	 * Do not consider the user1's in neighbor list
+	 * @param neighbors: Already selected neighbors format (targetUser, user1)
+	 * @param entry: Format is (user1,user2)-->Dominates/Not
+	 * @return dominatedUserId or null(if not dominated)
+	 */
 	private Long findDominated(Tuple2<Tuple2<Long, Long>, Boolean> entry) {
 		Long dominatedUserId = null;
-		
+
 		if(entry._2 == true){
 			dominatedUserId = entry._1._2;
 		}
-		
+
+
 		return dominatedUserId;
 	}
 
@@ -213,7 +257,7 @@ public class MultiObjectiveRec implements Serializable {
 			Tuple2<Tuple2<Long, Iterable<FeatureSim>>, Tuple2<Long, Iterable<FeatureSim>>> cartesianOfSimilarity) {		
 		Long user1Id = cartesianOfSimilarity._1._1;
 		Long user2Id = cartesianOfSimilarity._2._1;
-		
+
 		Boolean dominance = doesDominate( cartesianOfSimilarity._1._2,  cartesianOfSimilarity._2._2);
 		Tuple2<Tuple2<Long,Long>, Boolean> dominanceInfo = new Tuple2<Tuple2<Long,Long>, Boolean>(
 				new Tuple2<Long, Long>(user1Id,  user2Id), dominance);
@@ -229,21 +273,21 @@ public class MultiObjectiveRec implements Serializable {
 	 */
 	private Boolean doesDominate(Iterable<FeatureSim> user1FeatureSims, Iterable<FeatureSim> user2FeatureSims) {
 		Boolean  retVal  = true;
-		
+
 		// create hashmap for user2FeatureSims to make search eaiser
 		HashMap<Integer, Double> user2FeaturesMap = new HashMap();
 		for(FeatureSim f2:user2FeatureSims){
 			user2FeaturesMap.put(f2.getFeatureId(), f2.getCosSim());
 		}
-		
+
 		// compare user1FeatureSims and user2FeatureSims
 		int countLarger = 0;
 		for(FeatureSim f1:user1FeatureSims){
 			Integer fId = f1.getFeatureId();
-			
+
 			Double simVal1 = f1.getCosSim();
 			Double simVal2 = user2FeaturesMap.get(fId);
-			
+
 			if(simVal2 == null){
 				// no such similarity in between user2 and target user
 				System.out.println("Warning: Might be error. No such similarity in between user2 and target user");
@@ -257,15 +301,15 @@ public class MultiObjectiveRec implements Serializable {
 				retVal  = false;
 				break;
 			}
-			
+
 		}
-		
+
 		if(retVal == true && countLarger < 1){
 			// violates the dominance rule
 			retVal  = false;
 		}
-		
-		
+
+
 		return retVal;
 	}
 
