@@ -176,36 +176,48 @@ public class MultiObjectiveRec implements Serializable {
 
 		// all candidate neighbors for each target user
 		JavaPairRDD<Long,Long> candidateUsers = allPairs.mapToPair(entry->new Tuple2<Long, Long>(entry._1, entry._2._1));
-				
+
 		// all target users
 		JavaRDD<Long> targetUsers = allPairs.keys();
-		
-		// filter out target users who have already collected predefined number of neighbors 
+
+		// initialize neighbors & neighborCounts
 		JavaPairRDD<Long, Integer> neighborCounts = targetUsers.mapToPair(e->new Tuple2<Long,Integer>(e,0));
+		JavaPairRDD<Long, Long> neighbors = targetUsers.mapToPair(e->new Tuple2<Long,Long>(e,null));
+
+		// filter out target users who have already collected predefined number of neighbors 
+		// actually here it is same as the initial targets
 		JavaRDD<Long> targetUsersFiltered = neighborCounts.filter(e->e._2 < N).keys();
-		
-		// remove non-targetUsersFiltered users from dominanceInfo - not to do any unnecessary calculation
-		Broadcast<HashSet<Long>> targetUserBC = sc.broadcast(new HashSet<Long>(targetUsersFiltered.collect()));
-		JavaPairRDD<Long, Tuple2<Tuple2<Long, Long>, Boolean>> dominanceInfoFilteredByTarget = dominanceInfo.filter(e->targetUserBC.value().contains(e._1)==false);
-		
-		
-		// select non-dominated(neighbor) users for each target seen in targetUsersFiltered
-		JavaPairRDD<Long, Long> neighborsTemp = selectNeighbors(dominanceInfoFilteredByTarget,candidateUsers);
-		
-		neighborCounts = neighborsTemp.mapToPair(e-> new Tuple2<Long,Integer>(e._1,1)).reduceByKey((x,y)->x+y);
-		neighborCounts.foreach(e->System.out.println("#Neighbors: " + e._1 + " " + e._2));
-		
-		-------------
-		need to do some calculations here to collect more than 1 neighbors
+
+		while(targetUsersFiltered.count() > 0){
+			// remove non-targetUsersFiltered users from dominanceInfo - not to do any unnecessary calculation
+			Broadcast<HashSet<Long>> targetUserBC = sc.broadcast(new HashSet<Long>(targetUsersFiltered.collect()));
+			JavaPairRDD<Long, Tuple2<Tuple2<Long, Long>, Boolean>> dominanceInfoFilteredByTarget = dominanceInfo.filter(e->targetUserBC.value().contains(e._1)==false);
+
+
+			// select non-dominated(neighbor) users for each target seen in targetUsersFiltered
+			JavaPairRDD<Long, Long> neighborsTemp = selectNeighbors(dominanceInfoFilteredByTarget,candidateUsers);
+			// combine older neighbors info with newly found neighbors
+			neighbors.union(neighborsTemp);
+			// update neighborsCount
+			neighborCounts = neighbors.mapToPair(e-> new Tuple2<Long,Integer>(e._1,1)).reduceByKey((x,y)->x+y);
+
+			// print
+			neighborCounts.foreach(e->System.out.println("#Neighbors: " + e._1 + " " + e._2));
+			
+			// filter out target users who have already collected predefined number of neighbors 
+			targetUsersFiltered = neighborCounts.filter(e->e._2 < N).keys();
+		}
+		-------------;
+		need to do some calculations here to collect more than 1 neighbor
 		// target --> (user1,user2, dominance), neighborOfTarget
 		JavaPairRDD<Long, Tuple2<Tuple2<Tuple2<Long, Long>, Boolean>, Long>> dominanceAndNeighbors = dominanceInfo.join(neighborsTemp);
 		JavaPairRDD<Long, Tuple2<Tuple2<Long,Long>, Boolean>> dominanceInfoFiltered = dominanceAndNeighbors.
 				filter(e->e._2._1._1._1 != e._2._2).
 				mapToPair(e->new Tuple2(e._1, e._2._1));
-	---
-	
-		JavaPairRDD<Integer, Integer> neighbors = null;
-		return neighbors;
+		---;
+
+		JavaPairRDD<Integer, Integer> retneighbors = null;
+		return retneighbors;
 	}
 
 
