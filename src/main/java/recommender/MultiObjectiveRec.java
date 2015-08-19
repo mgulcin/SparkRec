@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 
 import main.Printer;
 import main.Utils;
@@ -123,26 +125,95 @@ public class MultiObjectiveRec implements Serializable {
 	private JavaPairRDD<Integer, Integer> selectNonDominateds(List<JavaRDD<MatrixEntry>> simList, JavaSparkContext sc) {
 
 		// convert list<matrixEntry> to (targetUser,otherUser) -->FeatureSim pairs (for all type of data)
-		JavaPairRDD<Tuple2<Long,Long>,FeatureSim> allSimPairs = null;
-		for(int i=0; i<simList.size(); i++){
-			JavaRDD<MatrixEntry> featureBasedSim = simList.get(i);
-			int index = i;
-			JavaPairRDD<Tuple2<Long,Long>,FeatureSim> simMap = featureBasedSim.mapToPair(
-					entry->new Tuple2<Tuple2<Long,Long>,FeatureSim>(
-							new Tuple2<Long,Long>(entry.i(),entry.j()), new FeatureSim(index, entry.value())));
-
-			//TODO is there a better way to do this?
-			if(allSimPairs == null){
-				allSimPairs = simMap;
-			} else {
-				allSimPairs.union(simMap);
-			}
-		}
+		JavaPairRDD<Tuple2<Long,Long>,FeatureSim> allSimPairs = createSimPairs(simList);
 
 		/*// print for targetUser=76
 		allSimPairs.filter(e->e._1._1 == 76).foreach(e->System.out.println("Target: " + e._1._1 +
 				" Other: " + e._1._2 +
 				" Sim: " + e._2));*/
+
+		// all target users
+		JavaRDD<Long> targetUsers = allSimPairs.keys().distinct().map(e->e._1).distinct();
+		/*// print
+				System.out.println("#targetUsers: " +targetUsers.count());
+		 */		
+
+		// all candidate neighbors for each target user : Cartesian product of targets except themselves
+		JavaPairRDD<Long,Long> candidateUsers = allSimPairs.mapToPair(entry->entry._1).distinct();
+		// print
+		System.out.println("#candidateUsers for 76: " + candidateUsers.filter(e->e._1 == 76).count());
+		
+		
+
+		// initialize neighbors & neighborCounts
+		JavaPairRDD<Long, Integer> neighborCounts = targetUsers.mapToPair(e->new Tuple2<Long,Integer>(e,0));
+		/*// print
+				System.out.println("#neighborCounts: " +neighborCounts.count());
+				neighborCounts.foreach(e->System.out.println("#Neighbors: " + e._1 + " " + e._2));*/
+
+		JavaPairRDD<Long, Long> neighbors = targetUsers.mapToPair(e->new Tuple2<Long,Long>(e,null));
+
+		// remove already selected neighbors from candidateUsers - not to re-select them
+		candidateUsers = candidateUsers.subtract(neighbors).distinct();
+		System.out.println("#candidateUsers for 76: " + candidateUsers.filter(e->e._1 == 76).count());
+
+		// filter out target users who have already collected predefined number of neighbors 
+		// actually here it is same as the initial targets
+		targetUsers = neighborCounts.filter(e->e._2 < N).keys();
+
+		// select neighbors
+		while(targetUsers.count() > 0){
+			JavaPairRDD<Long, Long> neighborsTemp = findNeighbors(allSimPairs, targetUsers, candidateUsers);
+
+			//print 
+			neighbors.filter(e->e._1 == 76).foreach(e->System.out.println("Neighbors(before) for 76: " + e._1 + " " + e._2));
+			neighborsTemp.filter(e->e._1 == 76).foreach(e->System.out.println("Neighbors(temp) for 76: " + e._1 + " " + e._2));
+
+			// combine older neighbors info with newly found neighbors
+			neighbors = neighbors.union(neighborsTemp).distinct().filter(e->e._2!=null);
+
+			//print 
+			neighbors.filter(e->e._1 == 76).foreach(e->System.out.println("Neighbors(after) for 76: " + e._1 + " " + e._2));
+
+			// update neighborsCount
+			neighborCounts = neighbors.mapToPair(e-> new Tuple2<Long,Integer>(e._1,1)).reduceByKey((x,y)->x+y);
+
+			// print
+			neighborCounts.filter(e->e._1 == 76).foreach(e->System.out.println("#Neighbors: " + e._1 + " " + e._2));
+
+			// filter out target users who have already collected predefined number of neighbors 
+			targetUsers = neighborCounts.filter(e->e._2 < N).keys();
+			
+			// remove already selected neighbors from candidateUsers - not to re-select them
+			candidateUsers = candidateUsers.subtract(neighbors).distinct();
+			System.out.println("#candidateUsers for 76: " + candidateUsers.filter(e->e._1 == 76).count());
+			
+			// remove already selected neighbors from allSimPairs - not to re-select them
+		TODO	!! I could not remove vals for the ones that i found as neighbor
+			
+			Map<Long,Long> neighborsMap = neighbors.collectAsMap();// is it a good idea to collect neighbors in a loop??
+			for(Entry<Long, Long> e : neighborsMap.entrySet()){
+				System.out.println("Map : " + e.getKey() + " " + e.getValue());
+			}
+			allSimPairs = allSimPairs.filter(e->(neighborsMap.get(e._1._1)!=e._1._2));
+			//neighborsMap.clear();//should i clear it here??
+
+			//print target:76 
+			
+			allSimPairs.filter(e->e._1._1 == 76).foreach(e->System.out.println("Target: " + e._1._1 +
+					" Other: " + e._1._2 +
+					" Sim: " + e._2));
+			
+			
+
+		}
+
+		JavaPairRDD<Integer, Integer> retneighbors = null;
+		return retneighbors;
+	}
+
+
+	private JavaPairRDD<Long, Long> findNeighbors(JavaPairRDD<Tuple2<Long, Long>, FeatureSim> allSimPairs, JavaRDD<Long> targetUsers, JavaPairRDD<Long, Long> candidateUsers) {
 
 		// TODO used groupby :( can I combine this and the next with reduceBy??
 		JavaPairRDD<Tuple2<Long, Long>, Iterable<FeatureSim>> allPairsGrouped = allSimPairs.groupByKey();
@@ -152,6 +223,7 @@ public class MultiObjectiveRec implements Serializable {
 
 		/*// print for targetUser=76
 		allPairs.filter(e->e._1 == 76).foreach(e->Printer.printSimList(e));*/
+
 
 		// cartesian: (targetUser --> (otherUser, FeatureSim list)) --> (targetUser --> (otherUser, FeatureSim list))
 		// get only if targetUser's are same
@@ -169,58 +241,76 @@ public class MultiObjectiveRec implements Serializable {
 		JavaPairRDD<Long, Tuple2<Tuple2<Long,Long>, Boolean>> dominanceInfo  = cartesianAllPairs.mapToPair(tupleOfCartesian->
 		new Tuple2<Long, Tuple2<Tuple2<Long,Long>, Boolean>>(tupleOfCartesian._1, doesDominate(tupleOfCartesian._2)));
 
-		/*//print target:76 user1:152
+		//print target:76 user1:152
 		dominanceInfo.filter(e->e._1 == 76 && e._2._1._1==152).foreach(e->System.out.println("Target: " + e._1 +
 				" Others: " + e._2._1._1 + " , " + e._2._1._2 +
-				" 1Dominates2: " + e._2._2));*/
+				" 1Dominates2: " + e._2._2));
 
-		// all candidate neighbors for each target user
-		JavaPairRDD<Long,Long> candidateUsers = allPairs.mapToPair(entry->new Tuple2<Long, Long>(entry._1, entry._2._1));
+		// select non-dominated(neighbor) users for each target seen in targetUsersFiltered
+		JavaPairRDD<Long, Long> neighborsTemp = selectNeighbors(dominanceInfo,candidateUsers);
 
-		// all target users
-		JavaRDD<Long> targetUsers = allPairs.keys();
+		// print
+		neighborsTemp.filter(e->e._1 == 76).foreach(e->System.out.println("NeighborsTemp for 76: " + e._1 + " " + e._2));
 
-		// initialize neighbors & neighborCounts
-		JavaPairRDD<Long, Integer> neighborCounts = targetUsers.mapToPair(e->new Tuple2<Long,Integer>(e,0));
-		JavaPairRDD<Long, Long> neighbors = targetUsers.mapToPair(e->new Tuple2<Long,Long>(e,null));
+		return neighborsTemp;
 
-		// filter out target users who have already collected predefined number of neighbors 
-		// actually here it is same as the initial targets
-		JavaRDD<Long> targetUsersFiltered = neighborCounts.filter(e->e._2 < N).keys();
-
-		while(targetUsersFiltered.count() > 0){
-			// remove non-targetUsersFiltered users from dominanceInfo - not to do any unnecessary calculation
-			Broadcast<HashSet<Long>> targetUserBC = sc.broadcast(new HashSet<Long>(targetUsersFiltered.collect()));
-			JavaPairRDD<Long, Tuple2<Tuple2<Long, Long>, Boolean>> dominanceInfoFilteredByTarget = dominanceInfo.filter(e->targetUserBC.value().contains(e._1)==false);
-
-
-			// select non-dominated(neighbor) users for each target seen in targetUsersFiltered
-			JavaPairRDD<Long, Long> neighborsTemp = selectNeighbors(dominanceInfoFilteredByTarget,candidateUsers);
-			// combine older neighbors info with newly found neighbors
-			neighbors.union(neighborsTemp);
-			// update neighborsCount
-			neighborCounts = neighbors.mapToPair(e-> new Tuple2<Long,Integer>(e._1,1)).reduceByKey((x,y)->x+y);
-
-			// print
-			neighborCounts.foreach(e->System.out.println("#Neighbors: " + e._1 + " " + e._2));
-			
-			// filter out target users who have already collected predefined number of neighbors 
-			targetUsersFiltered = neighborCounts.filter(e->e._2 < N).keys();
-		}
-		-------------;
-		need to do some calculations here to collect more than 1 neighbor
-		// target --> (user1,user2, dominance), neighborOfTarget
-		JavaPairRDD<Long, Tuple2<Tuple2<Tuple2<Long, Long>, Boolean>, Long>> dominanceAndNeighbors = dominanceInfo.join(neighborsTemp);
-		JavaPairRDD<Long, Tuple2<Tuple2<Long,Long>, Boolean>> dominanceInfoFiltered = dominanceAndNeighbors.
-				filter(e->e._2._1._1._1 != e._2._2).
-				mapToPair(e->new Tuple2(e._1, e._2._1));
-		---;
-
-		JavaPairRDD<Integer, Integer> retneighbors = null;
-		return retneighbors;
 	}
 
 
+	/**
+	 * convert list<matrixEntry> to (targetUser,otherUser) -->FeatureSim pairs (for all type of data)
+	 * @param simList: list of MatrixEntry indicating similarity among users
+	 * @return
+	 */
+	private JavaPairRDD<Tuple2<Long, Long>, FeatureSim> createSimPairs(
+			List<JavaRDD<MatrixEntry>> simList) {
+		JavaPairRDD<Tuple2<Long,Long>,FeatureSim> allSimPairs = null;
+		for(int i=0; i<simList.size(); i++){
+			JavaRDD<MatrixEntry> featureBasedSim = simList.get(i);
+			int index = i;
+			JavaPairRDD<Tuple2<Long,Long>,FeatureSim> simMap = featureBasedSim.mapToPair(
+					entry->new Tuple2<Tuple2<Long,Long>,FeatureSim>(
+							new Tuple2<Long,Long>(entry.i(),entry.j()), new FeatureSim(index, entry.value())));
+
+			//TODO is there a better way to do this?
+			if(allSimPairs == null){
+				allSimPairs = simMap;
+			} else {
+				allSimPairs.union(simMap);
+			}
+		}
+
+		return allSimPairs;
+	}
+
+
+	/**
+	 * Find out if userId is already selected as neighbor
+	 * Cases:
+	 * 1) At neighborsBCValue: neighbor value is equal to null: Not neighbor
+	 * 2) Entry.u1 == neighborId : Neighbor
+	 * 3) Entry.u2 ==neighborId : Neighbor
+	 * 
+	 * @param neighborsBCValue: target->neighborId
+	 * @param entry: target->(u1,u2,1dominates2) info
+	 * @return
+	 */
+	private boolean isNeighbor(Broadcast<Map<Long, Long>> neighborsBC,
+			Tuple2<Long, Tuple2<Tuple2<Long, Long>, Boolean>> entry) {
+		boolean retVal = false;
+
+		if(neighborsBC.value().get(entry._1) != null){
+			if(neighborsBC.value().get(entry._1) == entry._2._1._1){
+				// this entry is belong to an already selected neighbor
+				retVal = true;
+			} else if(neighborsBC.value().get(entry._1) == entry._2._1._2){
+				// this entry is belong to an already selected neighbor
+				retVal = true;
+			}
+		}
+
+		return retVal;
+	}
 
 
 	private JavaPairRDD<Long, Long> selectNeighbors(
