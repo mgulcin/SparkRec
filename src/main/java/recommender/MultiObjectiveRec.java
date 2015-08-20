@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import main.Main;
 import main.Printer;
 import main.Utils;
 
@@ -33,7 +34,7 @@ public class MultiObjectiveRec implements Serializable {
 	private static final long serialVersionUID = 1L;
 
 	private int N;
-
+	
 
 	public MultiObjectiveRec(int N) {
 		super();
@@ -58,7 +59,7 @@ public class MultiObjectiveRec implements Serializable {
 		for(JavaPairRDD<Integer, Integer> dataFlattened:inputDataList){
 			// create vector representation
 			JavaRDD<Vector> vectorOfUsers = createVectorOf(dataFlattened);
-			//vectorOfUsers.foreach(v->System.out.println(v.toString()));
+			//vectorOfUsers.foreach(v->Printer.printToFile(Main.logPath,v.toString()));
 
 			// calculate cos sim
 			JavaRDD<MatrixEntry> simEntriesUnionRdd = Utils.calculateCosSim(vectorOfUsers);
@@ -86,7 +87,7 @@ public class MultiObjectiveRec implements Serializable {
 
 		// find items to recommend 
 		// TODO copied from UserBased collab filtering--> find a better design!!
-		JavaPairRDD<Integer, Integer> baseData = inputDataList.get(0);//TODO currently using the fisrt data type as base, make parametric!!
+		JavaPairRDD<Integer, Integer> baseData = inputDataList.get(0);//TODO currently using the first data type as base, make parametric!!
 		JavaPairRDD<Integer,Integer> topKRecItems = findItemsToSuggest(k, neighbors, baseData);
 
 		return topKRecItems ;
@@ -97,9 +98,9 @@ public class MultiObjectiveRec implements Serializable {
 			JavaPairRDD<Integer, Integer> baseData) {
 		// apply join on dataMapped and neighbors: i.e (targetUser,neighbor) (neighbor,<itemList>) --> neighbor, (targetUser, <itemList>)
 		JavaPairRDD<Integer,Integer> neighborsSwapped = neighbors.mapToPair((Tuple2<Integer,Integer>n)->n.swap());
-		//neighborsSwapped.foreach(entry->System.out.println(entry.toString()));
-		//System.out.println(neighborsSwapped.count());
-		//System.out.println(dataMapped.count());
+		//neighborsSwapped.foreach(entry->Printer.printToFile(Main.logPath,entry.toString()));
+		//Printer.printToFile(Main.logPath,neighborsSwapped.count());
+		//Printer.printToFile(Main.logPath,dataMapped.count());
 
 
 		JavaPairRDD<Integer, Tuple2<Integer, Optional<Integer>>> joined = baseData.leftOuterJoin(neighborsSwapped);
@@ -115,7 +116,7 @@ public class MultiObjectiveRec implements Serializable {
 		// find topk
 		JavaPairRDD<Integer,Integer> topKRecItems = Utils.getTopK(k, recList);
 		// print
-		//topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
+		//topKRecItems.foreach(e->Printer.printToFile(Main.logPath,e._1 + " , " + e._2));
 
 		return topKRecItems;	
 
@@ -128,34 +129,34 @@ public class MultiObjectiveRec implements Serializable {
 		JavaPairRDD<Tuple2<Long,Long>,FeatureSim> allSimPairs = createSimPairs(simList);
 
 		/*// print for targetUser=76
-		allSimPairs.filter(e->e._1._1 == 76).foreach(e->System.out.println("Target: " + e._1._1 +
+		allSimPairs.filter(e->e._1._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"Target: " + e._1._1 +
 				" Other: " + e._1._2 +
 				" Sim: " + e._2));*/
 
 		// all target users
 		JavaRDD<Long> targetUsers = allSimPairs.keys().distinct().map(e->e._1).distinct();
 		/*// print
-				System.out.println("#targetUsers: " +targetUsers.count());
+				Printer.printToFile(Main.logPath,"#targetUsers: " +targetUsers.count());
 		 */		
 
 		// all candidate neighbors for each target user : Cartesian product of targets except themselves
 		JavaPairRDD<Long,Long> candidateUsers = allSimPairs.mapToPair(entry->entry._1).distinct();
 		// print
-		System.out.println("#candidateUsers for 76: " + candidateUsers.filter(e->e._1 == 76).count());
+		//Printer.printToFile(Main.logPath,"#candidateUsers for 76: " + candidateUsers.filter(e->e._1 == 76).count());
 		
 		
 
 		// initialize neighbors & neighborCounts
 		JavaPairRDD<Long, Integer> neighborCounts = targetUsers.mapToPair(e->new Tuple2<Long,Integer>(e,0));
 		/*// print
-				System.out.println("#neighborCounts: " +neighborCounts.count());
-				neighborCounts.foreach(e->System.out.println("#Neighbors: " + e._1 + " " + e._2));*/
+				Printer.printToFile(Main.logPath,"#neighborCounts: " +neighborCounts.count());
+				neighborCounts.foreach(e->Printer.printToFile(Main.logPath,"#Neighbors: " + e._1 + " " + e._2));*/
 
 		JavaPairRDD<Long, Long> neighbors = targetUsers.mapToPair(e->new Tuple2<Long,Long>(e,null));
 
 		// remove already selected neighbors from candidateUsers - not to re-select them
 		candidateUsers = candidateUsers.subtract(neighbors).distinct();
-		System.out.println("#candidateUsers for 76: " + candidateUsers.filter(e->e._1 == 76).count());
+		//Printer.printToFile(Main.logPath,"#candidateUsers for 76: " + candidateUsers.filter(e->e._1 == 76).count());
 
 		// filter out target users who have already collected predefined number of neighbors 
 		// actually here it is same as the initial targets
@@ -164,51 +165,68 @@ public class MultiObjectiveRec implements Serializable {
 		// select neighbors
 		while(targetUsers.count() > 0){
 			JavaPairRDD<Long, Long> neighborsTemp = findNeighbors(allSimPairs, targetUsers, candidateUsers);
-
+			
 			//print 
-			neighbors.filter(e->e._1 == 76).foreach(e->System.out.println("Neighbors(before) for 76: " + e._1 + " " + e._2));
-			neighborsTemp.filter(e->e._1 == 76).foreach(e->System.out.println("Neighbors(temp) for 76: " + e._1 + " " + e._2));
+			//neighbors.filter(e->e._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"Neighbors(before) for 76: " + e._1 + " " + e._2));
+			//neighborsTemp.filter(e->e._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"Neighbors(temp) for 76: " + e._1 + " " + e._2));
 
 			// combine older neighbors info with newly found neighbors
 			neighbors = neighbors.union(neighborsTemp).distinct().filter(e->e._2!=null);
 
 			//print 
-			neighbors.filter(e->e._1 == 76).foreach(e->System.out.println("Neighbors(after) for 76: " + e._1 + " " + e._2));
+			//neighbors.filter(e->e._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"Neighbors(after) for 76: " + e._1 + " " + e._2));
 
 			// update neighborsCount
 			neighborCounts = neighbors.mapToPair(e-> new Tuple2<Long,Integer>(e._1,1)).reduceByKey((x,y)->x+y);
 
 			// print
-			neighborCounts.filter(e->e._1 == 76).foreach(e->System.out.println("#Neighbors: " + e._1 + " " + e._2));
+			//neighborCounts.filter(e->e._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"#Neighbors: " + e._1 + " " + e._2));
 
 			// filter out target users who have already collected predefined number of neighbors 
 			targetUsers = neighborCounts.filter(e->e._2 < N).keys();
 			
+			// print for debug
+			long count1 = targetUsers.count();
+			JavaRDD<Long> targetUsersTemp = targetUsers;
+			
+			
+			// or the ones for whom we cannot collect any new neighbors!!
+			JavaRDD<Long> neighborsTempTargets = neighborsTemp.keys();// for whom at least one new neighbor found
+			targetUsers = targetUsers.intersection(neighborsTempTargets);// only the ones seen in neighborsTempTargets
+			
+			// print for debug
+			long count2 = targetUsers.count();
+			
+			long diff = (count1-count2);
+			if(diff > 0){
+				Printer.printToFile(Main.logPath,"diff: " + diff);
+				JavaRDD<Long> diffUsers = targetUsersTemp.subtract(targetUsers);
+				diffUsers.foreach(e->Printer.printToFile(Main.logPath,e + " , "));
+				
+				Printer.printToFile(Main.logPath,"");
+			}
+						
 			// remove already selected neighbors from candidateUsers - not to re-select them
 			candidateUsers = candidateUsers.subtract(neighbors).distinct();
-			System.out.println("#candidateUsers for 76: " + candidateUsers.filter(e->e._1 == 76).count());
+			//Printer.printToFile(Main.logPath,"#candidateUsers for 76: " + candidateUsers.filter(e->e._1 == 76).count());
 			
 			// remove already selected neighbors from allSimPairs - not to re-select them
-		TODO	!! I could not remove vals for the ones that i found as neighbor
+			JavaPairRDD<Tuple2<Long,Long>, FeatureSim> neighborsDummy = neighbors.mapToPair(e-> new Tuple2<Tuple2<Long,Long>, FeatureSim>(e, new FeatureSim(null, null)));
+			JavaPairRDD<Tuple2<Long, Long>, Tuple2<FeatureSim, Optional<FeatureSim>>> allSimPairsNeighborsJoin = allSimPairs.leftOuterJoin(neighborsDummy);
+			JavaPairRDD<Tuple2<Long, Long>, Tuple2<FeatureSim, Optional<FeatureSim>>> allSimPairsNeighborsJoinFiltered = allSimPairsNeighborsJoin.filter(tuple->tuple._2._2.isPresent() == false);
+			allSimPairs = allSimPairsNeighborsJoinFiltered.mapToPair(tuple->new Tuple2(tuple._1,tuple._2._1));
 			
-			Map<Long,Long> neighborsMap = neighbors.collectAsMap();// is it a good idea to collect neighbors in a loop??
-			for(Entry<Long, Long> e : neighborsMap.entrySet()){
-				System.out.println("Map : " + e.getKey() + " " + e.getValue());
-			}
-			allSimPairs = allSimPairs.filter(e->(neighborsMap.get(e._1._1)!=e._1._2));
-			//neighborsMap.clear();//should i clear it here??
-
-			//print target:76 
-			
-			allSimPairs.filter(e->e._1._1 == 76).foreach(e->System.out.println("Target: " + e._1._1 +
+			/*//print target:76 
+			Printer.printToFile(Main.logPath,"#allSimPairs for 76: " + allSimPairs.filter(e->e._1._1 == 76).count());
+			allSimPairs.filter(e->e._1._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"Target: " + e._1._1 +
 					" Other: " + e._1._2 +
-					" Sim: " + e._2));
+					" Sim: " + e._2));*/
 			
 			
-
+			
 		}
 
-		JavaPairRDD<Integer, Integer> retneighbors = null;
+		JavaPairRDD<Integer, Integer> retneighbors = neighbors.mapToPair(e->new Tuple2<Integer, Integer>(e._1.intValue(), e._2.intValue()));
 		return retneighbors;
 	}
 
@@ -234,23 +252,23 @@ public class MultiObjectiveRec implements Serializable {
 				(tupleOfTuple._1._1, new Tuple2(tupleOfTuple._1._2,tupleOfTuple._2._2)));
 
 		/*//print target:76 user1:152
-		System.out.println(cartesianAllPairs.count());
+		Printer.printToFile(Main.logPath,cartesianAllPairs.count());
 		cartesianAllPairs.filter(e->e._1 == 76 && e._2._1._1==152).foreach(x->Printer.printCartesianSimList(x));*/
 
 		// for each target user, find if user1 dominates user2
 		JavaPairRDD<Long, Tuple2<Tuple2<Long,Long>, Boolean>> dominanceInfo  = cartesianAllPairs.mapToPair(tupleOfCartesian->
 		new Tuple2<Long, Tuple2<Tuple2<Long,Long>, Boolean>>(tupleOfCartesian._1, doesDominate(tupleOfCartesian._2)));
 
-		//print target:76 user1:152
-		dominanceInfo.filter(e->e._1 == 76 && e._2._1._1==152).foreach(e->System.out.println("Target: " + e._1 +
+		/*//print target:76 user1:152
+		dominanceInfo.filter(e->e._1 == 76 && e._2._1._1==152).foreach(e->Printer.printToFile(Main.logPath,"Target: " + e._1 +
 				" Others: " + e._2._1._1 + " , " + e._2._1._2 +
-				" 1Dominates2: " + e._2._2));
+				" 1Dominates2: " + e._2._2));*/
 
 		// select non-dominated(neighbor) users for each target seen in targetUsersFiltered
 		JavaPairRDD<Long, Long> neighborsTemp = selectNeighbors(dominanceInfo,candidateUsers);
 
 		// print
-		neighborsTemp.filter(e->e._1 == 76).foreach(e->System.out.println("NeighborsTemp for 76: " + e._1 + " " + e._2));
+		//neighborsTemp.filter(e->e._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"NeighborsTemp for 76: " + e._1 + " " + e._2));
 
 		return neighborsTemp;
 
@@ -289,21 +307,17 @@ public class MultiObjectiveRec implements Serializable {
 	 * Cases:
 	 * 1) At neighborsBCValue: neighbor value is equal to null: Not neighbor
 	 * 2) Entry.u1 == neighborId : Neighbor
-	 * 3) Entry.u2 ==neighborId : Neighbor
 	 * 
 	 * @param neighborsBCValue: target->neighborId
-	 * @param entry: target->(u1,u2,1dominates2) info
+	 * @param entry: (target,u1)->simList info
 	 * @return
 	 */
 	private boolean isNeighbor(Broadcast<Map<Long, Long>> neighborsBC,
-			Tuple2<Long, Tuple2<Tuple2<Long, Long>, Boolean>> entry) {
+			Tuple2<Tuple2<Long, Long>, FeatureSim> e) {
 		boolean retVal = false;
 
-		if(neighborsBC.value().get(entry._1) != null){
-			if(neighborsBC.value().get(entry._1) == entry._2._1._1){
-				// this entry is belong to an already selected neighbor
-				retVal = true;
-			} else if(neighborsBC.value().get(entry._1) == entry._2._1._2){
+		if(neighborsBC.value().get(e._1._1) != null){
+			if(neighborsBC.value().get(e._1._1) == e._1._2){
 				// this entry is belong to an already selected neighbor
 				retVal = true;
 			}
@@ -323,14 +337,14 @@ public class MultiObjectiveRec implements Serializable {
 				.filter(e->e._2 != null);
 
 		//print target:76 
-		//dominatedUsers.filter(e->e._1 == 76).foreach(e->System.out.println("Dominated: " + e._1 + " " + e._2));
+		//dominatedUsers.filter(e->e._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"Dominated: " + e._1 + " " + e._2));
 
 		// find candidateUsers - dominatedUsers for each target TODO What if subtraction return less than N users??
 		JavaPairRDD<Long, Long> nonDominateds = candidateUsers.subtract(dominatedUsers);
 
 		//print target:76 
-		//System.out.println("#Neigbors: " +neighbors.filter(e->e._1 == 76).count());
-		//neighbors.filter(e->e._1 == 76).foreach(e->System.out.println("Neigbors: " + e._1 + " " + e._2));
+		//Printer.printToFile(Main.logPath,"#Neigbors: " +neighbors.filter(e->e._1 == 76).count());
+		//neighbors.filter(e->e._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"Neigbors: " + e._1 + " " + e._2));
 
 		return nonDominateds;
 	}
@@ -392,7 +406,7 @@ public class MultiObjectiveRec implements Serializable {
 
 			if(simVal2 == null){
 				// no such similarity in between user2 and target user
-				System.out.println("Warning: Might be error. No such similarity in between user2 and target user");
+				Printer.printToFile(Main.logPath,"Warning: Might be error. No such similarity in between user2 and target user");
 			} else if(simVal1 > simVal2){
 				countLarger++;
 				// follows the dominance rule
@@ -431,7 +445,7 @@ public class MultiObjectiveRec implements Serializable {
 		// Select most similar N entries 
 		JavaRDD<MatrixEntry> topN = groupedSortedSimUnion.flatMap((Iterable<MatrixEntry> eList)->Utils.getTopNPlusEquals(N, eList));
 		// print top-k
-		//topK.foreach(entry->System.out.println(entry.toString()));
+		//topK.foreach(entry->Printer.printToFile(Main.logPath,entry.toString()));
 
 		return topN;
 	}
@@ -448,10 +462,10 @@ public class MultiObjectiveRec implements Serializable {
 		// create inverted index representation: itemId to userId e.g. i21-->u3
 		JavaPairRDD<Integer, Integer> invertedIndexMapped = dataFlattened.mapToPair(tuple-> tuple.swap());
 		// print inverted list
-		//invertedIndexMapped.foreach(t->System.out.println(t._1() + " , " + t._2()));
+		//invertedIndexMapped.foreach(t->Printer.printToFile(Main.logPath,t._1() + " , " + t._2()));
 
 		int largestUserId = Utils.findLargestValueId(invertedIndexMapped);
-		//System.out.println(largestUserId);
+		//Printer.printToFile(Main.logPath,largestUserId);
 
 
 		// create itemid-->userid list

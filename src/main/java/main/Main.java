@@ -23,17 +23,22 @@ public class Main implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 6106269076155338045L;
+	public static String logPath;
+	
 
 	public static void main(String[] args) {
 
-		if(args.length != 2){
+		if(args.length != 3){
 			System.out.println("Wrong number of arguments. Give a file as input.");
 			System.exit(-1);
 		}
+		
+		// file for log
+		logPath = args[0];
 
 		// some file in the form of userId,<comma separated list of itemIds> e.g. u1,i1,i32,i36,i94
-		String trainFile = args[0];
-		String testFile = args[1];
+		String trainFile = args[1];
+		String testFile = args[2];
 
 		SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local[2]").set("spark.executor.memory","1g");
 		JavaSparkContext sc = new JavaSparkContext(conf);
