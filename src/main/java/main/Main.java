@@ -54,14 +54,14 @@ public class Main implements Serializable {
 		// recommend
 		int k = 5;
 		int N = 10;
-		//UserBasedCollabFiltering ucf = new UserBasedCollabFiltering(N);
+		UserBasedCollabFiltering ucf = new UserBasedCollabFiltering(N);
 		//ItemBasedCollabFiltering icf = new ItemBasedCollabFiltering(N);
 		//HybridRec hybrid = new HybridRec(N);
-		MultiObjectiveRec moRec = new MultiObjectiveRec(N);
-		//JavaPairRDD<Integer, Integer> recOutput = ucf.performRecommendation(sc, trainDataFlattened, k);
+		//MultiObjectiveRec moRec = new MultiObjectiveRec(N);
+		JavaPairRDD<Integer, Integer> recOutput = ucf.performRecommendation(sc, trainDataFlattened, k);
 		//JavaPairRDD<Integer, Integer> recOutput = icf.performRecommendation(sc, trainDataFlattened,k);
 		//JavaPairRDD<Integer, Integer> recOutput = hybrid.performRecommendation(sc, trainDataFlattened, k);
-		JavaPairRDD<Integer, Integer> recOutput = moRec.performRecommendation(sc, inputDataList, k);
+		//JavaPairRDD<Integer, Integer> recOutput = moRec.performRecommendation(sc, inputDataList, k);
 		// print
 		//recOutput.filter(x->x._1 == 1).foreach(e->System.out.println(e._1 + " , " + e._2));
 

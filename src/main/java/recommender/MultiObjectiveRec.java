@@ -2,27 +2,21 @@ package recommender;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 
 import main.Main;
 import main.Printer;
 import main.Utils;
 
-import org.apache.commons.collections.map.HashedMap;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.distributed.MatrixEntry;
 
-import com.google.common.base.Optional;
-
 import scala.Serializable;
 import scala.Tuple2;
+
+import com.google.common.base.Optional;
 
 
 
@@ -34,7 +28,7 @@ public class MultiObjectiveRec implements Serializable {
 	private static final long serialVersionUID = 1L;
 
 	private int N;
-	
+
 
 	public MultiObjectiveRec(int N) {
 		super();
@@ -49,9 +43,28 @@ public class MultiObjectiveRec implements Serializable {
 	 * @param k: outputList size
 	 * @return recommended items, e.g. userid--> itemId 
 	 */
-	public JavaPairRDD<Integer, Integer> performRecommendation(JavaSparkContext sc,
+	public JavaPairRDD<Integer, Integer> performRecommendation(
 			List<JavaPairRDD<Integer, Integer>> inputDataList, int k){
 
+		// Select most similar users (i.e. neighbors)
+		JavaPairRDD<Integer,Integer> neighbors = selectNeighbors(inputDataList);
+		neighbors.cache();
+		// print neighbors
+		//neighbors.foreach(entry->System.out.println(entry.toString()));
+
+		// find topk
+		//TODO currently using the first data type as base, make parametric!!
+		JavaPairRDD<Integer, Integer> baseData = inputDataList.get(0);
+		// TODO using code from RecommenderUtil --> may need to find a better design!!
+		JavaPairRDD<Integer,Integer> topKRecItems =  RecommenderUtil.selectItemsFromNeighbors(baseData, neighbors, k);
+		// print
+		//topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
+
+		return topKRecItems ;
+	}
+
+
+	private JavaPairRDD<Integer, Integer> selectNeighbors(List<JavaPairRDD<Integer, Integer>> inputDataList) {
 		// for each inputDataType(feature): 
 		// calculate cosine similarity of users for each inputDataType(feature)
 		// and get most similar neighbors 
@@ -83,47 +96,13 @@ public class MultiObjectiveRec implements Serializable {
 		}
 
 		// select N non-domainated users
-		JavaPairRDD<Integer, Integer> neighbors = selectNonDominateds(simList, sc);
-
-		// find items to recommend 
-		// TODO copied from UserBased collab filtering--> find a better design!!
-		JavaPairRDD<Integer, Integer> baseData = inputDataList.get(0);//TODO currently using the first data type as base, make parametric!!
-		JavaPairRDD<Integer,Integer> topKRecItems = findItemsToSuggest(k, neighbors, baseData);
-
-		return topKRecItems ;
+		JavaPairRDD<Integer, Integer> neighbors = selectNonDominateds(simList);
+		
+		return neighbors;
 	}
 
 
-	private JavaPairRDD<Integer,Integer>  findItemsToSuggest(int k, JavaPairRDD<Integer, Integer> neighbors,
-			JavaPairRDD<Integer, Integer> baseData) {
-		// apply join on dataMapped and neighbors: i.e (targetUser,neighbor) (neighbor,<itemList>) --> neighbor, (targetUser, <itemList>)
-		JavaPairRDD<Integer,Integer> neighborsSwapped = neighbors.mapToPair((Tuple2<Integer,Integer>n)->n.swap());
-		//neighborsSwapped.foreach(entry->Printer.printToFile(Main.logPath,entry.toString()));
-		//Printer.printToFile(Main.logPath,neighborsSwapped.count());
-		//Printer.printToFile(Main.logPath,dataMapped.count());
-
-
-		JavaPairRDD<Integer, Tuple2<Integer, Optional<Integer>>> joined = baseData.leftOuterJoin(neighborsSwapped);
-		JavaPairRDD<Integer, Tuple2<Integer, Integer>> joinedMapped = joined.mapToPair(tuple-> Utils.removeOptional(tuple));
-		JavaPairRDD<Integer, Tuple2<Integer, Integer>> joinedMappedFiltered = joinedMapped.filter(tuple-> tuple._2()._2() >= 0);
-
-		// get the items that are suggested to target : userid--> recitemId
-		JavaPairRDD<Integer,Integer> recList = joinedMappedFiltered.mapToPair(f->new Tuple2<Integer,Integer>(f._2()._2(),f._2()._1()));
-		//JavaPairRDD<Integer, Iterable<Integer>> recListConcat = recList.groupByKey();
-		// print
-		//recListConcat.filter(x->x._1==1).foreach(tuple->Printer.printTupleWithIterable(tuple));
-
-		// find topk
-		JavaPairRDD<Integer,Integer> topKRecItems = Utils.getTopK(k, recList);
-		// print
-		//topKRecItems.foreach(e->Printer.printToFile(Main.logPath,e._1 + " , " + e._2));
-
-		return topKRecItems;	
-
-	}
-
-
-	private JavaPairRDD<Integer, Integer> selectNonDominateds(List<JavaRDD<MatrixEntry>> simList, JavaSparkContext sc) {
+	private JavaPairRDD<Integer, Integer> selectNonDominateds(List<JavaRDD<MatrixEntry>> simList) {
 
 		// convert list<matrixEntry> to (targetUser,otherUser) -->FeatureSim pairs (for all type of data)
 		JavaPairRDD<Tuple2<Long,Long>,FeatureSim> allSimPairs = createSimPairs(simList);
@@ -143,8 +122,8 @@ public class MultiObjectiveRec implements Serializable {
 		JavaPairRDD<Long,Long> candidateUsers = allSimPairs.mapToPair(entry->entry._1).distinct();
 		// print
 		//Printer.printToFile(Main.logPath,"#candidateUsers for 76: " + candidateUsers.filter(e->e._1 == 76).count());
-		
-		
+
+
 
 		// initialize neighbors & neighborCounts
 		JavaPairRDD<Long, Integer> neighborCounts = targetUsers.mapToPair(e->new Tuple2<Long,Integer>(e,0));
@@ -165,7 +144,7 @@ public class MultiObjectiveRec implements Serializable {
 		// select neighbors
 		while(targetUsers.count() > 0){
 			JavaPairRDD<Long, Long> neighborsTemp = findNeighbors(allSimPairs, targetUsers, candidateUsers);
-			
+
 			//print 
 			//neighbors.filter(e->e._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"Neighbors(before) for 76: " + e._1 + " " + e._2));
 			//neighborsTemp.filter(e->e._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"Neighbors(temp) for 76: " + e._1 + " " + e._2));
@@ -184,46 +163,46 @@ public class MultiObjectiveRec implements Serializable {
 
 			// filter out target users who have already collected predefined number of neighbors 
 			targetUsers = neighborCounts.filter(e->e._2 < N).keys();
-			
-			// print for debug
+
+			/*// print for debug
 			long count1 = targetUsers.count();
-			JavaRDD<Long> targetUsersTemp = targetUsers;
-			
-			
+			JavaRDD<Long> targetUsersTemp = targetUsers;*/
+
+
 			// or the ones for whom we cannot collect any new neighbors!!
 			JavaRDD<Long> neighborsTempTargets = neighborsTemp.keys();// for whom at least one new neighbor found
 			targetUsers = targetUsers.intersection(neighborsTempTargets);// only the ones seen in neighborsTempTargets
-			
-			// print for debug
+
+			/*// print for debug
 			long count2 = targetUsers.count();
-			
+
 			long diff = (count1-count2);
 			if(diff > 0){
 				Printer.printToFile(Main.logPath,"diff: " + diff);
 				JavaRDD<Long> diffUsers = targetUsersTemp.subtract(targetUsers);
 				diffUsers.foreach(e->Printer.printToFile(Main.logPath,e + " , "));
-				
+
 				Printer.printToFile(Main.logPath,"");
-			}
-						
+			}*/
+
 			// remove already selected neighbors from candidateUsers - not to re-select them
 			candidateUsers = candidateUsers.subtract(neighbors).distinct();
 			//Printer.printToFile(Main.logPath,"#candidateUsers for 76: " + candidateUsers.filter(e->e._1 == 76).count());
-			
+
 			// remove already selected neighbors from allSimPairs - not to re-select them
 			JavaPairRDD<Tuple2<Long,Long>, FeatureSim> neighborsDummy = neighbors.mapToPair(e-> new Tuple2<Tuple2<Long,Long>, FeatureSim>(e, new FeatureSim(null, null)));
 			JavaPairRDD<Tuple2<Long, Long>, Tuple2<FeatureSim, Optional<FeatureSim>>> allSimPairsNeighborsJoin = allSimPairs.leftOuterJoin(neighborsDummy);
 			JavaPairRDD<Tuple2<Long, Long>, Tuple2<FeatureSim, Optional<FeatureSim>>> allSimPairsNeighborsJoinFiltered = allSimPairsNeighborsJoin.filter(tuple->tuple._2._2.isPresent() == false);
 			allSimPairs = allSimPairsNeighborsJoinFiltered.mapToPair(tuple->new Tuple2(tuple._1,tuple._2._1));
-			
+
 			/*//print target:76 
 			Printer.printToFile(Main.logPath,"#allSimPairs for 76: " + allSimPairs.filter(e->e._1._1 == 76).count());
 			allSimPairs.filter(e->e._1._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"Target: " + e._1._1 +
 					" Other: " + e._1._2 +
 					" Sim: " + e._2));*/
-			
-			
-			
+
+
+
 		}
 
 		JavaPairRDD<Integer, Integer> retneighbors = neighbors.mapToPair(e->new Tuple2<Integer, Integer>(e._1.intValue(), e._2.intValue()));
@@ -265,7 +244,7 @@ public class MultiObjectiveRec implements Serializable {
 				" 1Dominates2: " + e._2._2));*/
 
 		// select non-dominated(neighbor) users for each target seen in targetUsersFiltered
-		JavaPairRDD<Long, Long> neighborsTemp = selectNeighbors(dominanceInfo,candidateUsers);
+		JavaPairRDD<Long, Long> neighborsTemp = findNeighbors(dominanceInfo,candidateUsers);
 
 		// print
 		//neighborsTemp.filter(e->e._1 == 76).foreach(e->Printer.printToFile(Main.logPath,"NeighborsTemp for 76: " + e._1 + " " + e._2));
@@ -301,33 +280,7 @@ public class MultiObjectiveRec implements Serializable {
 		return allSimPairs;
 	}
 
-
-	/**
-	 * Find out if userId is already selected as neighbor
-	 * Cases:
-	 * 1) At neighborsBCValue: neighbor value is equal to null: Not neighbor
-	 * 2) Entry.u1 == neighborId : Neighbor
-	 * 
-	 * @param neighborsBCValue: target->neighborId
-	 * @param entry: (target,u1)->simList info
-	 * @return
-	 */
-	private boolean isNeighbor(Broadcast<Map<Long, Long>> neighborsBC,
-			Tuple2<Tuple2<Long, Long>, FeatureSim> e) {
-		boolean retVal = false;
-
-		if(neighborsBC.value().get(e._1._1) != null){
-			if(neighborsBC.value().get(e._1._1) == e._1._2){
-				// this entry is belong to an already selected neighbor
-				retVal = true;
-			}
-		}
-
-		return retVal;
-	}
-
-
-	private JavaPairRDD<Long, Long> selectNeighbors(
+	private JavaPairRDD<Long, Long> findNeighbors(
 			JavaPairRDD<Long, Tuple2<Tuple2<Long, Long>, Boolean>> dominanceInfo, 
 			JavaPairRDD<Long, Long> candidateUsers) {
 
@@ -427,27 +380,6 @@ public class MultiObjectiveRec implements Serializable {
 
 
 		return retVal;
-	}
-
-
-	/**
-	 * TODO Copied from UserBasedCollabfiltering--> need a better design!!
-	 * @param simEntries: similarity among users
-	 * @return matrix entry for most similar N users + + the ones that have the equal sim value to the last one
-	 */
-	private JavaRDD<MatrixEntry> selectMostSimilars(JavaRDD<MatrixEntry> simEntries) {
-		// Create sorted list (based on similarity) of other users for each user	
-		// sort by value and group by i 
-		JavaRDD<MatrixEntry> sortedSimEntriesUnionRdd = simEntries.sortBy(x->x.value(),false,1);
-		JavaRDD<Iterable<MatrixEntry>> groupedSortedSimUnion = sortedSimEntriesUnionRdd.groupBy(m->m.i()).values();
-		//groupedSortedSimUnion.foreach(entry->print(entry));
-
-		// Select most similar N entries 
-		JavaRDD<MatrixEntry> topN = groupedSortedSimUnion.flatMap((Iterable<MatrixEntry> eList)->Utils.getTopNPlusEquals(N, eList));
-		// print top-k
-		//topK.foreach(entry->Printer.printToFile(Main.logPath,entry.toString()));
-
-		return topN;
 	}
 
 
