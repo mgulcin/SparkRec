@@ -72,7 +72,7 @@ public class UserBasedCollabFiltering implements Serializable {
 	 */
 	public JavaPairRDD<Integer,Integer> selectNeighbors(JavaPairRDD<Integer, Integer> dataFlattened){
 		// calculate cosine similarity of users 
-		JavaRDD<Vector> vectorOfUsers = createVectorOf(dataFlattened);
+		JavaRDD<Vector> vectorOfUsers = RecommenderUtil.createVectorOfNeighbors(dataFlattened);
 		//vectorOfUsers.foreach(v->System.out.println(v.toString()));
 		JavaRDD<MatrixEntry> simEntriesUnionRdd = Utils.calculateCosSim(vectorOfUsers);
 		//JavaRDD<Iterable<MatrixEntry>> groupedSimUnion = simEntriesUnionRdd.groupBy(m->m.i()).values();
@@ -99,52 +99,4 @@ public class UserBasedCollabFiltering implements Serializable {
 		return neighbors;
 	}
 	
-	
-	
-	/**
-	 * @param data: itemId-->userId RDD
-	 * @return SparseVector of user freq. for each item
-	 */
-	private static  JavaRDD<Vector> createVectorOf(JavaPairRDD<Integer, Integer> dataFlattened) {
-		JavaRDD<Vector> retVector = null;
-
-		// create inverted index representation: itemId to userId e.g. i21-->u3
-		JavaPairRDD<Integer, Integer> invertedIndexMapped = dataFlattened.mapToPair(tuple-> tuple.swap());
-		// print inverted list
-		//invertedIndexMapped.foreach(t->System.out.println(t._1() + " , " + t._2()));
-
-		int largestUserId = Utils.findLargestValueId(invertedIndexMapped);
-		//System.out.println(largestUserId);
-
-
-		// TODO Normally Version 1 and 2 should produce same results, but they do not!!!
-		//////////Version 1
-		// create itemid-->userid list
-		JavaPairRDD<Integer, Iterable<Integer>> invertedIndexGrouped = invertedIndexMapped.groupByKey();
-		//invertedIndexGrouped.foreach(t->printTuple2(t));
-
-		JavaRDD<Iterable<Integer>> values = invertedIndexGrouped.values();
-		// for each rdd(~entry) find the freq. of users
-		retVector = values.map(uList-> Utils.countVals(largestUserId+1, uList));
-		//////////Version 1
-		/*////////// Version 2
-		// count freq. of a user for each item : (itemId, userId)-->freq
-		JavaPairRDD<Tuple2<Integer,Integer>, Integer> pairs = invertedIndexMapped.mapToPair((Tuple2<Integer,Integer> t)-> new Tuple2<Tuple2<Integer,Integer>,Integer>(t,1));
-		JavaPairRDD<Tuple2<Integer,Integer>, Integer> counts = pairs.reduceByKey((x,y)-> x+y); //  pairs.reduceByKey(Integer::sum);
-		//counts.foreach(t->System.out.println(t._1() + " , " + t._2()));
-
-		// create itemid-->(userid,freq) and group by itemId
-		JavaPairRDD<Integer, Tuple2<Integer, Integer>> userFreqPerItem = counts.mapToPair((Tuple2<Tuple2<Integer,Integer>, Integer> t)
-				-> new Tuple2<Integer,Tuple2<Integer,Integer>>(t._1()._1(), new Tuple2<Integer,Integer>(t._1()._2(),t._2())));		
-		JavaPairRDD<Integer, Iterable<Tuple2<Integer, Integer>>> userFreqListPerItem = userFreqPerItem.groupByKey();
-		//userFreqListPerItem.foreach(t->printTuple2(t));
-		retVector = userFreqListPerItem.map((Tuple2<Integer, Iterable<Tuple2<Integer, Integer>>> t)-> createVectorOf((largestUserId+1), t));
-
-		//////////Version 2
-		 */
-		return retVector;
-	}	
-
-
-
 }

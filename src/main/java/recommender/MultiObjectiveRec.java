@@ -71,7 +71,7 @@ public class MultiObjectiveRec implements Serializable {
 		List<JavaRDD<MatrixEntry>> simList = new ArrayList<JavaRDD<MatrixEntry>>();
 		for(JavaPairRDD<Integer, Integer> dataFlattened:inputDataList){
 			// create vector representation
-			JavaRDD<Vector> vectorOfUsers = createVectorOf(dataFlattened);
+			JavaRDD<Vector> vectorOfUsers =  RecommenderUtil.createVectorOfNeighbors(dataFlattened);
 			//vectorOfUsers.foreach(v->Printer.printToFile(Main.logPath,v.toString()));
 
 			// calculate cos sim
@@ -383,32 +383,6 @@ public class MultiObjectiveRec implements Serializable {
 	}
 
 
-	/**
-	 * TODO: Copied from UserBasedCollabFiltering, I should find a better design!!
-	 * @param data: itemId-->userId RDD
-	 * @return SparseVector of user freq. for each item
-	 */
-	private static  JavaRDD<Vector> createVectorOf(JavaPairRDD<Integer, Integer> dataFlattened) {
-		JavaRDD<Vector> retVector = null;
-
-		// create inverted index representation: itemId to userId e.g. i21-->u3
-		JavaPairRDD<Integer, Integer> invertedIndexMapped = dataFlattened.mapToPair(tuple-> tuple.swap());
-		// print inverted list
-		//invertedIndexMapped.foreach(t->Printer.printToFile(Main.logPath,t._1() + " , " + t._2()));
-
-		int largestUserId = Utils.findLargestValueId(invertedIndexMapped);
-		//Printer.printToFile(Main.logPath,largestUserId);
-
-
-		// create itemid-->userid list
-		JavaPairRDD<Integer, Iterable<Integer>> invertedIndexGrouped = invertedIndexMapped.groupByKey();
-		//invertedIndexGrouped.foreach(t->printTuple2(t));
-
-		JavaRDD<Iterable<Integer>> values = invertedIndexGrouped.values();
-		// for each rdd(~entry) find the freq. of users
-		retVector = values.map(uList-> Utils.countVals(largestUserId+1, uList));
-
-		return retVector;
-	}
+	
 
 }

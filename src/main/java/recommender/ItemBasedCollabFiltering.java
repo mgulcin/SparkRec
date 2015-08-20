@@ -72,7 +72,7 @@ public class ItemBasedCollabFiltering implements Serializable {
 	private JavaPairRDD<Integer, Integer> selectNeighbors(
 			JavaPairRDD<Integer, Integer> dataFlattened) {
 		// calculate cosine similarity of items
-		JavaRDD<Vector> vectorOfUsers = createVectorOf(dataFlattened);
+		JavaRDD<Vector> vectorOfUsers = RecommenderUtil.createVectorOfItems(dataFlattened);
 		// print
 		//vectorOfUsers.rdd().toJavaRDD().foreach(v->System.out.println(v.toString()));
 		JavaRDD<MatrixEntry> simEntriesUnionRdd = Utils.calculateCosSim(vectorOfUsers);
@@ -94,27 +94,6 @@ public class ItemBasedCollabFiltering implements Serializable {
 		return neighbors;
 	}
 
-	/**
-	 * @param data: userId --> itemIdRDD
-	 * @return SparseVector of user freq. for each item
-	 */
-	private JavaRDD<Vector> createVectorOf(JavaPairRDD<Integer, Integer> dataFlattened) {
-		JavaRDD<Vector> retVector = null;
-
-		int largestValId = Utils.findLargestValueId(dataFlattened);
-		//System.out.println(largestValId);
-
-		// create userid-->itemid list
-		JavaPairRDD<Integer, Iterable<Integer>> indexGrouped = dataFlattened.groupByKey();
-		//indexGrouped.foreach(t->printTuple2(t));
-
-		JavaRDD<Iterable<Integer>> values = indexGrouped.values();
-		// for each rdd(~entry) find the freq. of items
-		retVector = values.map(valList-> Utils.countVals(largestValId+1, valList));
-
-
-		return retVector;
-	}
-
+	
 
 }
