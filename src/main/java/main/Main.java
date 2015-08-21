@@ -86,14 +86,18 @@ public class Main implements Serializable {
 		// recommend for all users
 		//JavaPairRDD<Integer, Integer> recOutput = ucf.performBatchRecommendation(sc, trainDataFlattened, k);
 
-		// recommend to target user only 
-		JavaPairRDD<Integer, Integer> neighbors = ucf.selectNeighbors(trainDataFlattened);
-		
+		// recommend to target user only 		
 		// here I perform recommendation for all users - which is not necessary in real world!!
 		List<Integer> targets = trainDataFlattened.keys().distinct().collect();
 		JavaPairRDD<Integer, Integer> recOutput = null;
 
 		for(Integer targetUserId: targets){
+			JavaPairRDD<Integer, Integer> neighbors = ucf.selectNeighbors(targetUserId, trainDataFlattened);// can be done in batch also out of loop
+			
+			// print neighbors
+			Printer.printToFile(Main.logPath, "Neighbors: ");
+			neighbors.foreach(entry->Printer.printToFile(Main.logPath, entry._1 + ", " + entry._2  ));
+			
 			if(recOutput == null){
 				recOutput = ucf.recommend(targetUserId, trainDataFlattened, neighbors, k);	
 			} else {
