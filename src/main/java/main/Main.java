@@ -52,11 +52,11 @@ public class Main implements Serializable {
 		inputDataList.add(trainDataFlattened);
 
 		// recommend
-		int k = 5;
-		int N = 10;
+		int k = 3;
+		int N = 2;
 		JavaPairRDD<Integer, Integer> recOutput = recommendbByUserBasedCollabFiltering(N,k, trainDataFlattened);
 		// print
-		recOutput.filter(x->x._1 == 1).foreach(e->Printer.printToFile(logPath, e._1 + " , " + e._2));
+		//recOutput.filter(x->x._1 == 1).foreach(e->Printer.printToFile(logPath, e._1 + " , " + e._2));
 
 		//ItemBasedCollabFiltering icf = new ItemBasedCollabFiltering(N);
 		//HybridRec hybrid = new HybridRec(N);
@@ -65,7 +65,7 @@ public class Main implements Serializable {
 		//JavaPairRDD<Integer, Integer> recOutput = hybrid.performRecommendation(sc, trainDataFlattened, k);
 		//JavaPairRDD<Integer, Integer> recOutput = moRec.performRecommendation(sc, inputDataList, k);
 
-		
+
 
 		// perform test
 		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
@@ -85,14 +85,14 @@ public class Main implements Serializable {
 
 		// recommend for all users
 		//JavaPairRDD<Integer, Integer> recOutput = ucf.performBatchRecommendation(sc, trainDataFlattened, k);
-		
+
 		// recommend to target user only 
 		JavaPairRDD<Integer, Integer> neighbors = ucf.selectNeighbors(trainDataFlattened);
 		
 		// here I perform recommendation for all users - which is not necessary in real world!!
 		List<Integer> targets = trainDataFlattened.keys().distinct().collect();
 		JavaPairRDD<Integer, Integer> recOutput = null;
-		
+
 		for(Integer targetUserId: targets){
 			if(recOutput == null){
 				recOutput = ucf.recommend(targetUserId, trainDataFlattened, neighbors, k);	
@@ -100,9 +100,12 @@ public class Main implements Serializable {
 				JavaPairRDD<Integer, Integer> recOutputDummy = ucf.recommend(targetUserId, trainDataFlattened, neighbors, k);	;		
 				recOutput = recOutput.union(recOutputDummy);
 			}
-			
+
 		}
-							
+		// print
+		Printer.printToFile(Main.logPath, "TopK: ");
+		recOutput.foreach(e->Printer.printToFile(Main.logPath, e._1 + " , " + e._2));
+
 		return recOutput;
 	}
 

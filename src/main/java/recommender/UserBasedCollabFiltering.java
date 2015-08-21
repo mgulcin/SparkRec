@@ -55,13 +55,15 @@ public class UserBasedCollabFiltering implements Serializable {
 		// Select most similar users (i.e. neighbors)
 		JavaPairRDD<Integer,Integer> neighbors = selectNeighbors(dataFlattened);
 		neighbors.cache();
-		// print neighbors
-		//neighbors.foreach(entry->System.out.println(entry.toString()));
+		/*// print neighbors
+		Printer.printToFile(Main.logPath, "Neighbors: ");
+		neighbors.foreach(entry->Printer.printToFile(Main.logPath, entry._1 + ", " + entry._2  ));*/
 
 		// find topk
 		JavaPairRDD<Integer,Integer> topKRecItems = RecommenderUtil.selectItemsFromNeighbors(dataFlattened, neighbors, k);
-		// print
-		//topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
+		/*// print
+		Printer.printToFile(Main.logPath, "TopK: ");
+		topKRecItems.foreach(e->Printer.printToFile(Main.logPath, e._1 + " , " + e._2));*/
 
 		return topKRecItems;
 	}

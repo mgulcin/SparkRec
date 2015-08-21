@@ -218,7 +218,7 @@ public class Utils {
 			JavaRDD<Integer> allItemsSuggested) {
 		
 		JavaPairRDD<Integer, Integer> freqOfRec = allItemsSuggested.mapToPair(item->new Tuple2<Integer,Integer>(item,1)).reduceByKey((x,y)->x+y);
-		List<Tuple2<Integer, Integer>> topkPairs = freqOfRec.top(k, new TupleComparator());
+		List<Tuple2<Integer, Integer>> topkPairs = freqOfRec.top(k, new TupleComparatorByKeyReversed());
 		JavaRDD<Integer> topk = Main.sc.parallelizePairs(topkPairs).map(entry->entry._1);//TODO Do I have to use sc here??
 		return topk;
 	}
@@ -305,6 +305,33 @@ class TupleComparatorByKey implements Comparator<Tuple2<Integer, Integer>>, Seri
 				retVal = -1;
 			} else if(tuple1._1 > tuple2._1){
 				retVal = 1;
+			} else {
+				retVal = 0;
+			}
+		}
+		
+		return retVal;
+	}
+}
+
+class TupleComparatorByKeyReversed implements Comparator<Tuple2<Integer, Integer>>, Serializable {
+	private static final long serialVersionUID = 8204911924272948547L;
+
+	@Override
+	public int compare(Tuple2<Integer, Integer> tuple1, Tuple2<Integer, Integer> tuple2) {
+		int retVal = -1;
+		
+		// first order by second value 
+		if(tuple1._2 < tuple2._2){
+			retVal = -1;
+		} else if(tuple1._2 > tuple2._2){
+			retVal = 1;
+		} else {
+			// second order by first value 
+			if(tuple1._1 < tuple2._1){
+				retVal = 1;
+			} else if(tuple1._1 > tuple2._1){
+				retVal = -1;
 			} else {
 				retVal = 0;
 			}
