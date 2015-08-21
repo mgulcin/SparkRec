@@ -24,7 +24,7 @@ public class Main implements Serializable {
 	 */
 	private static final long serialVersionUID = 6106269076155338045L;
 	public static String logPath;
-	
+	public static JavaSparkContext sc;
 
 	public static void main(String[] args) {
 
@@ -32,7 +32,7 @@ public class Main implements Serializable {
 			System.out.println("Wrong number of arguments. Give a file as input.");
 			System.exit(-1);
 		}
-		
+
 		// file for log
 		logPath = args[0];
 
@@ -41,12 +41,12 @@ public class Main implements Serializable {
 		String testFile = args[2];
 
 		SparkConf conf = new SparkConf().setAppName("Simple Application").setMaster("local[2]").set("spark.executor.memory","1g");
-		JavaSparkContext sc = new JavaSparkContext(conf);
+		sc = new JavaSparkContext(conf);
 
 		// perform recommendation
 		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
 		JavaPairRDD<Integer, Integer> trainDataFlattened = readData(sc, trainFile);
-		
+
 		// inclusion of multiple features
 		List<JavaPairRDD<Integer, Integer>> inputDataList = new ArrayList<JavaPairRDD<Integer,Integer>>();
 		inputDataList.add(trainDataFlattened);
@@ -54,27 +54,56 @@ public class Main implements Serializable {
 		// recommend
 		int k = 5;
 		int N = 10;
-		UserBasedCollabFiltering ucf = new UserBasedCollabFiltering(N);
+		JavaPairRDD<Integer, Integer> recOutput = recommendbByUserBasedCollabFiltering(N,k, trainDataFlattened);
+		// print
+		recOutput.filter(x->x._1 == 1).foreach(e->Printer.printToFile(logPath, e._1 + " , " + e._2));
+
 		//ItemBasedCollabFiltering icf = new ItemBasedCollabFiltering(N);
 		//HybridRec hybrid = new HybridRec(N);
 		//MultiObjectiveRec moRec = new MultiObjectiveRec(N);
-		JavaPairRDD<Integer, Integer> recOutput = ucf.performRecommendation(sc, trainDataFlattened, k);
 		//JavaPairRDD<Integer, Integer> recOutput = icf.performRecommendation(sc, trainDataFlattened,k);
 		//JavaPairRDD<Integer, Integer> recOutput = hybrid.performRecommendation(sc, trainDataFlattened, k);
 		//JavaPairRDD<Integer, Integer> recOutput = moRec.performRecommendation(sc, inputDataList, k);
-		// print
-		//recOutput.filter(x->x._1 == 1).foreach(e->System.out.println(e._1 + " , " + e._2));
+
+		
 
 		// perform test
 		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
 		JavaPairRDD<Integer, Integer> testDataFlattened = readData(sc, testFile);
-		
+
 		// evaluate
 		EvaluationResult evalResult = Evaluate.evaluate(recOutput,testDataFlattened);
 		// print
-		System.out.println(evalResult.toString());
-		
+		Printer.printToFile(logPath,evalResult.toString());
+
 		sc.close();
+	}
+
+	private static JavaPairRDD<Integer, Integer> recommendbByUserBasedCollabFiltering(int N, int k,
+			JavaPairRDD<Integer, Integer> trainDataFlattened) {
+		UserBasedCollabFiltering ucf = new UserBasedCollabFiltering(N);
+
+		// recommend for all users
+		//JavaPairRDD<Integer, Integer> recOutput = ucf.performBatchRecommendation(sc, trainDataFlattened, k);
+		
+		// recommend to target user only 
+		JavaPairRDD<Integer, Integer> neighbors = ucf.selectNeighbors(trainDataFlattened);
+		
+		// here I perform recommendation for all users - which is not necessary in real world!!
+		List<Integer> targets = trainDataFlattened.keys().distinct().collect();
+		JavaPairRDD<Integer, Integer> recOutput = null;
+		
+		for(Integer targetUserId: targets){
+			if(recOutput == null){
+				recOutput = ucf.recommend(targetUserId, trainDataFlattened, neighbors, k);	
+			} else {
+				JavaPairRDD<Integer, Integer> recOutputDummy = ucf.recommend(targetUserId, trainDataFlattened, neighbors, k);	;		
+				recOutput = recOutput.union(recOutputDummy);
+			}
+			
+		}
+							
+		return recOutput;
 	}
 
 	/**
@@ -102,10 +131,10 @@ public class Main implements Serializable {
 		dataFlattened.cache();
 		// print
 		//dataFlattened.foreach(s->System.out.println(s));
-		
+
 		return dataFlattened;
 	}
-	
+
 	/**
 	 * 
 	 * @param line: userid, itemid1, itemid2, ...

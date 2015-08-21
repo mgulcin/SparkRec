@@ -43,7 +43,7 @@ public class HybridRec implements Serializable {
 			JavaPairRDD<Integer, Integer> inputData, int k){
 		
 		// get the output of each rec. method: userid-->rec. itemid
-		JavaPairRDD<Integer, Integer> ucfRecs = ucf.performRecommendation(sc, inputData, k);
+		JavaPairRDD<Integer, Integer> ucfRecs = ucf.performBatchRecommendation(sc, inputData, k);
 		JavaPairRDD<Integer, Integer> icfRecs = icf.performRecommendation(sc, inputData, k);
 
 		// combine the outputs

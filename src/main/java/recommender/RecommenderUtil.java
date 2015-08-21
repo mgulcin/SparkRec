@@ -55,24 +55,44 @@ public class RecommenderUtil {
 
 		return topKRecItems;
 	}
-	
+
 	/**
-	 * TODO Version1 and Version2 should produce same result, but they don't. Control this!!!
+	 * NOTE1: onlyNeighborsData does not have to be the same as the one used when neighbors are found. 
+	 * I.e. neighbors can be found in the training phase, and during the test (or real time analysis) phase
+	 * different/updated data can be used
+	 * 
+	 * @param onlyNeighborsData: Format userid-->itemid. 
+	 * @param k: output list size
+	 * @return top k items suggested
+	 */
+	public static JavaRDD<Integer> selectItemsFromNeighbors(
+			JavaPairRDD<Integer, Integer> onlyNeighborsData, int k) {
+		// get the items that are used/preferred by the neighbors
+		JavaRDD<Integer> allItemsSuggested = onlyNeighborsData.map(neighborsItem->neighborsItem._2);
+		
+		// select top k items- based on frequency?
+		JavaRDD<Integer> topKItems = Utils.getTopK(k, allItemsSuggested);
+
+		return topKItems;
+	}
+
+	/**
+	 * TODO Version1 and Version2 should produce same results, but they don't. Control this!!!
 	 * @param data: itemId-->userId RDD
 	 * @return SparseVector of user freq. for each item
 	 */
 	public static JavaRDD<Vector> createVectorOfNeighbors(JavaPairRDD<Integer, Integer> dataFlattened) {
 		JavaRDD<Vector> retVector = null;
-		
+
 		//////////Version 1
 		// create inverted index representation: itemId to userId e.g. i21-->u3
 		JavaPairRDD<Integer, Integer> invertedIndexMapped = dataFlattened.mapToPair(tuple-> tuple.swap());
 		// print inverted list
 		//invertedIndexMapped.foreach(t->System.out.println(t._1() + " , " + t._2()));
 		retVector = createVectorOfItems(invertedIndexMapped);
-		
+
 		//////////Version 1
-		
+
 		/*////////// Version 2
 		// count freq. of a user for each item : (itemId, userId)-->freq
 		JavaPairRDD<Tuple2<Integer,Integer>, Integer> pairs = invertedIndexMapped.mapToPair((Tuple2<Integer,Integer> t)-> new Tuple2<Tuple2<Integer,Integer>,Integer>(t,1));
@@ -130,7 +150,7 @@ public class RecommenderUtil {
 
 		return topKRecItems;
 	}
-	
+
 	/**
 	 * @param data: userId --> itemIdRDD
 	 * @return SparseVector of user freq. for each item
@@ -152,5 +172,7 @@ public class RecommenderUtil {
 
 		return retVector;
 	}
+
+
 
 }

@@ -207,6 +207,21 @@ public class Utils {
 
 		return topKRecItems;
 	}
+	
+	/**
+	 * 
+	 * @param k: output list size
+	 * @param allItemsSuggested: list of recommended items
+	 * @return top-k items - TODO based on frequency? May introduce something else here
+	 */
+	public static JavaRDD<Integer> getTopK(int k,
+			JavaRDD<Integer> allItemsSuggested) {
+		
+		JavaPairRDD<Integer, Integer> freqOfRec = allItemsSuggested.mapToPair(item->new Tuple2<Integer,Integer>(item,1)).reduceByKey((x,y)->x+y);
+		List<Tuple2<Integer, Integer>> topkPairs = freqOfRec.top(k, new TupleComparator());
+		JavaRDD<Integer> topk = Main.sc.parallelizePairs(topkPairs).map(entry->entry._1);//TODO Do I have to use sc here??
+		return topk;
+	}
 
 	/**
 	 * 
@@ -260,6 +275,8 @@ public class Utils {
 		}
 		return retVal;
 	}
+
+
 
 }
 

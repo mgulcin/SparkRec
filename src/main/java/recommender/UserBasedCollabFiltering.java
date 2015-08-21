@@ -1,7 +1,11 @@
 package recommender;
 
+import java.util.HashSet;
+import java.util.List;
+
 import main.Printer;
 import main.Utils;
+import main.Main;
 
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -11,8 +15,6 @@ import org.apache.spark.mllib.linalg.distributed.MatrixEntry;
 
 import scala.Serializable;
 import scala.Tuple2;
-
-
 
 import com.google.common.base.Optional;
 
@@ -47,7 +49,7 @@ public class UserBasedCollabFiltering implements Serializable {
 	 * @param k: output list size
 	 * @return recommended items
 	 */
-	public JavaPairRDD<Integer,Integer> performRecommendation(JavaSparkContext sc, 
+	public JavaPairRDD<Integer,Integer> performBatchRecommendation(JavaSparkContext sc, 
 			JavaPairRDD<Integer, Integer> dataFlattened, int k){
 
 		// Select most similar users (i.e. neighbors)
@@ -63,6 +65,61 @@ public class UserBasedCollabFiltering implements Serializable {
 
 		return topKRecItems;
 	}
+	
+	/**
+	 * 
+	 * @param targetUserId: Target user to be given recommendation
+	 * @param inputData: Format userid-->itemid. Neighbors past preferences OR all data of all users -- I perform filtering
+	 * @param neighbors: Format targetId-->neighborId. List of users for the target user OR all users -- I perform filtering
+	 * @param k: output list size
+	 * @return JavaPairRDD<Integer,Integer> topKRec: Format userid-->itemid. Recommended items for the target user
+	 */
+	public JavaPairRDD<Integer,Integer> recommend(Integer targetUserId, 
+			JavaPairRDD<Integer, Integer> inputData, JavaPairRDD<Integer, Integer> neighbors, int k){
+		
+		// collect the neighbors of the target user
+		JavaRDD<Integer> targetsNeighbors = neighbors.filter(tuple->tuple._1.equals(targetUserId)).map(tuple->tuple._2);
+		//targetsNeighbors.foreach(e->Printer.printToFile(Main.logPath, e.toString()));
+		
+		// filter input data to have info of only neighbors
+		HashSet<Integer> targetsNeighborsSet = new HashSet<Integer>(targetsNeighbors.collect());//TODO collecting the neighbors here:( Ok only size N
+		JavaPairRDD<Integer, Integer> onlyNeighborsData = inputData.filter(tuple->targetsNeighborsSet.contains(tuple._1) == true);
+		//onlyNeighborsData.foreach(e->Printer.printToFile(Main.logPath, e._1 + " , " + e._2));
+		
+		
+		// find topk by using onlyNeighborsData
+		JavaRDD<Integer> topKRecItems = RecommenderUtil.selectItemsFromNeighbors(onlyNeighborsData, k);
+		//topKRecItems.foreach(e->Printer.printToFile(Main.logPath, e.toString()));
+		
+	
+		// create tuple of target userId-->recommended itemId
+		JavaPairRDD<Integer,Integer> topKRec = topKRecItems.mapToPair(item->new Tuple2<Integer,Integer>(targetUserId, item));
+		// print
+		//topKRec.foreach(e->Printer.printToFile(Main.logPath, e._1 + " , " + e._2));
+
+		return topKRec;
+	}
+
+	//TODO Gives error. I guess I cannot use an Rdd inside a method
+	private boolean doesContain(JavaRDD<Integer> targetsNeighbors, Integer neighborId) {
+		boolean retVal = false;
+
+		// create a dummy JavaPairRDD
+		JavaPairRDD<Integer, Boolean> targetsNeighborsDummyMap = targetsNeighbors.mapToPair(e->new Tuple2<Integer, Boolean>(e,null));
+		//targetsNeighborsDummyMap.foreach(e->Printer.printToFile(Main.logPath, e._1 + " , " + e._2));
+		
+		// search the dummy JavaPairRDD if it contains neighborId as key or not
+		List<Boolean> retList = targetsNeighborsDummyMap.lookup(neighborId);
+		//Printer.printToFile(Main.logPath,retList.toString());
+		
+		// if at least one dummy JavaPairRDD exist, then neighborId is in targetsNeighbors
+		if(retList != null && retList.isEmpty() == false){
+			retVal = true;
+		}
+		
+		return retVal;
+	}
+
 
 	/**
 	 * 1- Calculate similarity among users based on their past preferences (e.g. movies rated, products bought, venues checked in)
