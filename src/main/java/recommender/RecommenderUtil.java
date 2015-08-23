@@ -69,7 +69,7 @@ public class RecommenderUtil {
 			JavaPairRDD<Integer, Integer> onlyNeighborsData, int k) {
 		// get the items that are used/preferred by the neighbors
 		JavaRDD<Integer> allItemsSuggested = onlyNeighborsData.map(neighborsItem->neighborsItem._2);
-		
+
 		// select top k items- based on frequency?
 		JavaRDD<Integer> topKItems = Utils.getTopK(k, allItemsSuggested);
 
@@ -149,6 +149,31 @@ public class RecommenderUtil {
 		//topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
 
 		return topKRecItems;
+	}
+
+	/**
+	 * 1- Collect k-many items by integrating the items identified to be neighbor items*
+	 * 2- Return top-k items
+	 * 
+	 * *neighbor items: Similar items to the ones that are used by the target user
+	 * 
+	 * NOTE1: Used by ItemBasedCF
+	 * NOTE2: dataFlattened does not have to be the same as the one used when neighbors are found. 
+	 * I.e. neighbors can be found in the training phase, and during the test (or real time analysis) phase
+	 * different/updated data can be used
+	 * 
+	 * @param onlyNeighborItemsData: userid-->itemid
+	 * @param k: output list size
+	 * @return recommended items
+	 */
+	public static JavaRDD<Integer> selectItemsFromItems(JavaPairRDD<Integer, Integer> onlyNeighborItemsData, int k) {
+		// get the items that are used/preferred by the neighbors
+		JavaRDD<Integer> allItemsSuggested = onlyNeighborItemsData.map(neighborsItem->neighborsItem._2);
+
+		// select top k items- based on frequency?
+		JavaRDD<Integer> topKItems = Utils.getTopK(k, allItemsSuggested);
+
+		return topKItems;
 	}
 
 	/**

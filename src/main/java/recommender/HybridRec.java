@@ -39,12 +39,11 @@ public class HybridRec implements Serializable {
 	 * @param k: outputList size
 	 * @return recommended items, e.g. userid--> itemId 
 	 */
-	public JavaPairRDD<Integer, Integer> performRecommendation(JavaSparkContext sc,
-			JavaPairRDD<Integer, Integer> inputData, int k){
+	public JavaPairRDD<Integer, Integer> performRecommendation(JavaPairRDD<Integer, Integer> inputData, int k){
 		
 		// get the output of each rec. method: userid-->rec. itemid
-		JavaPairRDD<Integer, Integer> ucfRecs = ucf.performBatchRecommendation(sc, inputData, k);
-		JavaPairRDD<Integer, Integer> icfRecs = icf.performRecommendation(sc, inputData, k);
+		JavaPairRDD<Integer, Integer> ucfRecs = ucf.performBatchRecommendation(inputData, k);
+		JavaPairRDD<Integer, Integer> icfRecs = icf.performBatchRecommendation(inputData, k);
 
 		// combine the outputs
 		JavaPairRDD<Integer, Integer> combinedOutputs = ucfRecs.union(icfRecs);

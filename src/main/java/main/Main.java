@@ -54,14 +54,15 @@ public class Main implements Serializable {
 		// recommend
 		int k = 3;
 		int N = 2;
-		JavaPairRDD<Integer, Integer> recOutput = recommendbByUserBasedCollabFiltering(N,k, trainDataFlattened);
+		//JavaPairRDD<Integer, Integer> recOutput = recommendbByUserBasedCollabFiltering(N,k, trainDataFlattened);
+		JavaPairRDD<Integer, Integer> recOutput = recommendbByItemBasedCollabFiltering(N,k, trainDataFlattened);
+		
 		// print
 		//recOutput.filter(x->x._1 == 1).foreach(e->Printer.printToFile(logPath, e._1 + " , " + e._2));
 
-		//ItemBasedCollabFiltering icf = new ItemBasedCollabFiltering(N);
+		
 		//HybridRec hybrid = new HybridRec(N);
 		//MultiObjectiveRec moRec = new MultiObjectiveRec(N);
-		//JavaPairRDD<Integer, Integer> recOutput = icf.performRecommendation(sc, trainDataFlattened,k);
 		//JavaPairRDD<Integer, Integer> recOutput = hybrid.performRecommendation(sc, trainDataFlattened, k);
 		//JavaPairRDD<Integer, Integer> recOutput = moRec.performRecommendation(sc, inputDataList, k);
 
@@ -79,12 +80,20 @@ public class Main implements Serializable {
 		sc.close();
 	}
 
+	private static JavaPairRDD<Integer, Integer> recommendbByItemBasedCollabFiltering(
+			int N, int k, JavaPairRDD<Integer, Integer> trainDataFlattened) {
+		// recommend for all users
+		ItemBasedCollabFiltering icf = new ItemBasedCollabFiltering(N);
+		JavaPairRDD<Integer, Integer> recOutput = icf.performBatchRecommendation(trainDataFlattened,k);
+		return recOutput;
+	}
+
 	private static JavaPairRDD<Integer, Integer> recommendbByUserBasedCollabFiltering(int N, int k,
 			JavaPairRDD<Integer, Integer> trainDataFlattened) {
 		UserBasedCollabFiltering ucf = new UserBasedCollabFiltering(N);
 
 		// recommend for all users
-		//JavaPairRDD<Integer, Integer> recOutput = ucf.performBatchRecommendation(sc, trainDataFlattened, k);
+		//JavaPairRDD<Integer, Integer> recOutput = ucf.performBatchRecommendation(trainDataFlattened, k);
 
 		// recommend to target user only 		
 		// here I perform recommendation for all users - which is not necessary in real world!!

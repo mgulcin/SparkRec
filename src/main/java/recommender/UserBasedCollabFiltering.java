@@ -43,13 +43,11 @@ public class UserBasedCollabFiltering implements Serializable {
 	 * 2- Collect N-similar users (neighbors) to the target user
 	 * 3- Collect k-many items by integrating the items used by the neighbors
 	 * 4- Return top-k items
-	 * @param sc
 	 * @param dataFlattened: userid-->itemid
 	 * @param k: output list size
 	 * @return recommended items
 	 */
-	public JavaPairRDD<Integer,Integer> performBatchRecommendation(JavaSparkContext sc, 
-			JavaPairRDD<Integer, Integer> dataFlattened, int k){
+	public JavaPairRDD<Integer,Integer> performBatchRecommendation(JavaPairRDD<Integer, Integer> dataFlattened, int k){
 
 		// Select most similar users (i.e. neighbors)
 		JavaPairRDD<Integer,Integer> neighbors = selectNeighbors(dataFlattened);
@@ -171,10 +169,10 @@ public class UserBasedCollabFiltering implements Serializable {
 		}
 
 		// get similarity of targetUser only
-		JavaRDD<MatrixEntry> simEntriesUnionForTarget = simEntries.filter(matrixEntry->matrixEntry.i()==targetUserId);
+		JavaRDD<MatrixEntry> simEntriesForTarget = simEntries.filter(matrixEntry->matrixEntry.i()==targetUserId);
 
 		// sort the entries according to the similarity and get topN users
-		List<MatrixEntry> topN = simEntriesUnionForTarget.top(N,  new MatrixEntryComperatorByValue());
+		List<MatrixEntry> topN = simEntriesForTarget.top(N,  new MatrixEntryComperatorByValue());
 		// print top-k
 		//topK.foreach(entry->System.out.println(entry.toString()));
 
