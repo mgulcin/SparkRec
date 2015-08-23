@@ -247,37 +247,6 @@ public class Utils {
 		return new Tuple2<Integer, Iterable<Tuple2<Integer, Integer>>>(targetUserId, topK);
 	}
 
-	/// unused methods
-
-	private static Tuple2<Integer,Iterable<Integer>> selectItems(
-			JavaPairRDD<Integer, Iterable<Integer>> dataMappedFiltered,
-			Integer nId, Integer tuId) {
-
-		Iterable<Integer> recItems = selectItems(dataMappedFiltered,nId);
-		return new Tuple2<Integer,Iterable<Integer>>(tuId,recItems);
-	}
-
-	private static List<Integer> selectItems(
-			JavaPairRDD<Integer, Iterable<Integer>> dataMappedFiltered,
-			Integer nId) {
-		List<Integer> resVal = dataMappedFiltered.filter((dm->dm._1 == nId)).flatMap(dm->dm._2).collect();
-		return resVal;
-	}
-
-
-	private boolean isElementOf(Tuple2<Integer, Iterable<Integer>> dm,
-			JavaPairRDD<Integer, Integer> neighborsSwapped) {
-		boolean retVal = false;
-		JavaRDD<Boolean> temp = neighborsSwapped.map(n-> n._1.equals(dm._1())).filter(r->r==true);
-		long trueCount = temp.count();
-		if(trueCount > 0){
-			retVal = true;
-		}
-		return retVal;
-	}
-
-
-
 }
 
 class TupleComparator implements Comparator<Tuple2<Integer, Integer>>, Serializable {

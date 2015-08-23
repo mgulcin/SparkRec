@@ -107,6 +107,7 @@ public class ItemBasedCollabFiltering implements Serializable {
 	 * @param dataFlattened: userid-->itemid
 	 * @return N similar items: userid-->itemid
 	 */
+	//TODO Test this
 	private JavaPairRDD<Integer, Integer> selectNeighbors(
 			JavaPairRDD<Integer, Integer> dataFlattened) {
 
@@ -126,14 +127,17 @@ public class ItemBasedCollabFiltering implements Serializable {
 		// print top-k
 		//topN.filter(m->m.i()==85).foreach(entry->System.out.println(entry.toString()));
 
-		// Select most similar items (i.e. neighbors): base itemid-->similar itemid
+		// Select most similar items (i.e. neighbors): itemid-->similar itemid
 		JavaPairRDD<Integer,Integer> itemByItemNeighbors = topN.mapToPair((MatrixEntry topElement)->new Tuple2<Integer,Integer>((int)topElement.i(), (int)topElement.j()));
 
 		// for each target user create list of similar items 
 		// i.e. combine (targetuser->item) & (item->similar item) and return targetuser->similar item
-		// TODO Control this!!, simEntries contain item-to-item similarity
-		
-		JavaPairRDD<Integer, Integer> neighbors = null;
+		JavaPairRDD<Integer,Integer> dataFlattenedSwapped = dataFlattened.mapToPair(e->e.swap());
+		JavaPairRDD<Integer, Tuple2<Integer, Optional<Integer>>> joined = dataFlattenedSwapped.leftOuterJoin(itemByItemNeighbors);
+		JavaPairRDD<Integer, Tuple2<Integer, Integer>> joinedMapped = joined.mapToPair(tuple-> Utils.removeOptional(tuple));
+		JavaPairRDD<Integer, Tuple2<Integer, Integer>> joinedMappedFiltered = joinedMapped.filter(tuple-> tuple._2()._2() >= 0);		
+
+		JavaPairRDD<Integer, Integer> neighbors = joinedMappedFiltered.mapToPair(tuple->tuple._2);
 		return neighbors;
 	}
 
@@ -144,6 +148,7 @@ public class ItemBasedCollabFiltering implements Serializable {
 	 * @param dataFlattened: userid-->itemid
 	 * @return N similar items: userid-->itemid
 	 */
+	//TODO Test this
 	private JavaPairRDD<Integer, Integer> selectNeighbors(Integer targetUserId,
 			JavaPairRDD<Integer, Integer> dataFlattened) {
 
@@ -151,9 +156,26 @@ public class ItemBasedCollabFiltering implements Serializable {
 		if(simEntries == null){
 			calculateSimilarityAmongItems(dataFlattened);
 		}
-		return dataFlattened;
 
-		//TODO finish this code after reviewing selectNeighbors(JavaPairRDD<Integer, Integer> dataFlattened)
+		// filter input data to have info of only target user's items
+		JavaPairRDD<Integer, Integer> dataFlattenedOnlyTarget = dataFlattened.filter(e->e._1.equals(targetUserId));
+		JavaRDD<Integer> targetsItemList = dataFlattenedOnlyTarget.map(e->e._2);
+		HashSet<Integer> targetsItemsSet = new HashSet<Integer>(targetsItemList.collect());//TODO collecting the items here:( can be too big to fit into memory
+		JavaRDD<MatrixEntry> simEntriesForTargetsItems = simEntries.filter(matrixEntry->targetsItemsSet.contains(matrixEntry.i()) == true);
+
+		// Select most similar N entries(items) for each item
+		JavaRDD<Iterable<MatrixEntry>> groupedSortedSimUnion = simEntriesForTargetsItems.groupBy(m->m.i()).values();
+		JavaRDD<MatrixEntry> topN = groupedSortedSimUnion.flatMap((Iterable<MatrixEntry> eList)->Utils.getTopN(N, eList));
+		// print top-k
+		//topN.filter(m->m.i()==85).foreach(entry->System.out.println(entry.toString()));
+
+		// Select most similar items (i.e. neighbors): itemid-->similar itemid
+		JavaPairRDD<Integer,Integer> itemByItemNeighbors = topN.mapToPair((MatrixEntry topElement)->new Tuple2<Integer,Integer>((int)topElement.i(), (int)topElement.j()));
+
+		// for each target user create list of similar items 
+		// already contain information for a single target, so just create the mapping
+		JavaPairRDD<Integer, Integer> neighbors = itemByItemNeighbors.mapToPair(tuple->new Tuple2(targetUserId, tuple._2));
+		return neighbors;
 	}
 
 	/**
