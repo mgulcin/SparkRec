@@ -17,15 +17,15 @@ public class HybridRec implements Serializable {
 	private static final long serialVersionUID = 1L;
 	private UserBasedCollabFiltering ucf;
 	private ItemBasedCollabFiltering icf;
-	
-	
-	
+
+
+
 
 	public HybridRec(int N) {
 		super();
 		ucf = new UserBasedCollabFiltering(N);
 		icf = new ItemBasedCollabFiltering(N);
-		
+
 	}
 
 
@@ -39,8 +39,8 @@ public class HybridRec implements Serializable {
 	 * @param k: outputList size
 	 * @return recommended items, e.g. userid--> itemId 
 	 */
-	public JavaPairRDD<Integer, Integer> performRecommendation(JavaPairRDD<Integer, Integer> inputData, int k){
-		
+	public JavaPairRDD<Integer, Integer> performBatchRecommendation(JavaPairRDD<Integer, Integer> inputData, int k){
+
 		// get the output of each rec. method: userid-->rec. itemid
 		JavaPairRDD<Integer, Integer> ucfRecs = ucf.performBatchRecommendation(inputData, k);
 		JavaPairRDD<Integer, Integer> icfRecs = icf.performBatchRecommendation(inputData, k);
@@ -50,9 +50,29 @@ public class HybridRec implements Serializable {
 		JavaPairRDD<Integer,Integer> topKRecItems = Utils.getTopK(k, combinedOutputs);
 		// print
 		//topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
-				
-		
+
+
 		return topKRecItems ;
 	}
-	
+
+	public JavaPairRDD<Integer,Integer> recommend(Integer targetUserId, 
+			JavaPairRDD<Integer, Integer> inputData, int k){
+		
+		// get the output of each rec. method: userid-->rec. itemid
+		JavaPairRDD<Integer, Integer> ucfNeighbors = ucf.selectNeighbors(targetUserId, inputData);
+		JavaPairRDD<Integer, Integer> ucfRecs = ucf.recommend(targetUserId, inputData, ucfNeighbors, k);
+		
+		JavaPairRDD<Integer, Integer> icfNeighbors = icf.selectNeighbors(targetUserId, inputData);
+		JavaPairRDD<Integer, Integer> icfRecs = icf.recommend(targetUserId, inputData, icfNeighbors, k);
+
+		// combine the outputs
+		JavaPairRDD<Integer, Integer> combinedOutputs = ucfRecs.union(icfRecs);
+		JavaPairRDD<Integer,Integer> topKRecItems = Utils.getTopK(k, combinedOutputs);
+		// print
+		//topKRecItems.foreach(e->System.out.println(e._1 + " , " + e._2));
+
+
+		return topKRecItems ;
+	}
+
 }

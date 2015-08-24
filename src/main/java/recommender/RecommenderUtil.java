@@ -124,6 +124,7 @@ public class RecommenderUtil {
 	 * different/updated data can be used
 	 * 
 	 * @param dataFlattened: userid-->itemid
+	 * @param neighbors: itemid-->similar itemid
 	 * @param k: output list size
 	 * @return recommended items
 	 */
@@ -136,6 +137,7 @@ public class RecommenderUtil {
 		JavaPairRDD<Integer, Tuple2<Integer, Optional<Integer>>> joined = dataFlattenedSwapped.leftOuterJoin(neighbors);
 		JavaPairRDD<Integer, Tuple2<Integer, Integer>> joinedMapped = joined.mapToPair(tuple-> Utils.removeOptional(tuple));
 		JavaPairRDD<Integer, Tuple2<Integer, Integer>> joinedMappedFiltered = joinedMapped.filter(tuple-> tuple._2()._2() >= 0);
+		
 
 		// get the items that are suggested to target : userid--> recitemId
 		JavaPairRDD<Integer,Integer> recList = joinedMappedFiltered.mapToPair(f->f._2());

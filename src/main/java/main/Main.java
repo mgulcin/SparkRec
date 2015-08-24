@@ -82,9 +82,31 @@ public class Main implements Serializable {
 
 	private static JavaPairRDD<Integer, Integer> recommendbByItemBasedCollabFiltering(
 			int N, int k, JavaPairRDD<Integer, Integer> trainDataFlattened) {
-		// recommend for all users
 		ItemBasedCollabFiltering icf = new ItemBasedCollabFiltering(N);
-		JavaPairRDD<Integer, Integer> recOutput = icf.performBatchRecommendation(trainDataFlattened,k);
+		
+		// recommend for all users
+		//JavaPairRDD<Integer, Integer> recOutput = icf.performBatchRecommendation(trainDataFlattened,k);
+		
+		// recommend to target user only 		
+		// here I perform recommendation for all users - which is not necessary in real world!!
+		List<Integer> targets = trainDataFlattened.keys().distinct().collect();
+		JavaPairRDD<Integer, Integer> recOutput = null;
+
+		for(Integer targetUserId: targets){
+			JavaPairRDD<Integer, Integer> neighbors = icf.selectNeighbors(targetUserId, trainDataFlattened);// can be done in batch also out of loop
+			
+			/*// print neighbors
+			Printer.printToFile(Main.logPath, "Neighbors: ");
+			neighbors.foreach(entry->Printer.printToFile(Main.logPath, entry._1 + ", " + entry._2  ));*/
+			
+			if(recOutput == null){
+				recOutput = icf.recommend(targetUserId, trainDataFlattened, neighbors, k);	
+			} else {
+				JavaPairRDD<Integer, Integer> recOutputDummy = icf.recommend(targetUserId, trainDataFlattened, neighbors, k);	;		
+				recOutput = recOutput.union(recOutputDummy);
+			}
+
+		}
 		return recOutput;
 	}
 

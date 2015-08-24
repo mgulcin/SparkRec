@@ -47,8 +47,8 @@ public class Utils {
 	public static  Iterable<MatrixEntry> getTopN(int N, Iterable<MatrixEntry> e) {
 		List<MatrixEntry> list = new ArrayList<MatrixEntry>();
 		CollectionUtils.addAll(list, e.iterator());// TODO what if iterable is too large to fit into memory??
-		//Comparator<MatrixEntry> comp = Comparator.comparing(x -> -1* x.value());
-		//Collections.sort(list,comp);// TODO if I dont call sort beforehand, I would use this in here--> which one is more effective?
+		Comparator<MatrixEntry> comp = Comparator.comparing(x -> -1* x.value());
+		Collections.sort(list,comp);
 
 		if(list.size() < N){
 			N = list.size();
