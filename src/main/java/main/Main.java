@@ -55,15 +55,14 @@ public class Main implements Serializable {
 		int k = 3;
 		int N = 2;
 		//JavaPairRDD<Integer, Integer> recOutput = recommendbByUserBasedCollabFiltering(N,k, trainDataFlattened);
-		JavaPairRDD<Integer, Integer> recOutput = recommendbByItemBasedCollabFiltering(N,k, trainDataFlattened);
-		
+		//JavaPairRDD<Integer, Integer> recOutput = recommendbByItemBasedCollabFiltering(N,k, trainDataFlattened);
+		JavaPairRDD<Integer, Integer> recOutput = recommendbByHybridCollabFiltering(N,k, trainDataFlattened);
+
 		// print
 		//recOutput.filter(x->x._1 == 1).foreach(e->Printer.printToFile(logPath, e._1 + " , " + e._2));
 
-		
-		//HybridRec hybrid = new HybridRec(N);
+
 		//MultiObjectiveRec moRec = new MultiObjectiveRec(N);
-		//JavaPairRDD<Integer, Integer> recOutput = hybrid.performRecommendation(sc, trainDataFlattened, k);
 		//JavaPairRDD<Integer, Integer> recOutput = moRec.performRecommendation(sc, inputDataList, k);
 
 
@@ -80,13 +79,34 @@ public class Main implements Serializable {
 		sc.close();
 	}
 
+	private static JavaPairRDD<Integer, Integer> recommendbByHybridCollabFiltering(
+			int N, int k, JavaPairRDD<Integer, Integer> trainDataFlattened) {
+		HybridRec hybrid = new HybridRec(N);
+		// recommend for all users
+		//JavaPairRDD<Integer, Integer> recOutput = hybrid.performBatchRecommendation(trainDataFlattened, k);
+		// recommend to target user only 		
+		// here I perform recommendation for all users - which is not necessary in real world!!
+		List<Integer> targets = trainDataFlattened.keys().distinct().collect();
+		JavaPairRDD<Integer, Integer> recOutput = null;
+
+		for(Integer targetUserId: targets){
+			if(recOutput == null){
+				recOutput = hybrid.recommend(targetUserId, trainDataFlattened, k);	
+			} else {
+				JavaPairRDD<Integer, Integer> recOutputDummy = hybrid.recommend(targetUserId, trainDataFlattened, k);	;		
+				recOutput = recOutput.union(recOutputDummy);
+			}
+		}
+		return recOutput;
+	}
+
 	private static JavaPairRDD<Integer, Integer> recommendbByItemBasedCollabFiltering(
 			int N, int k, JavaPairRDD<Integer, Integer> trainDataFlattened) {
 		ItemBasedCollabFiltering icf = new ItemBasedCollabFiltering(N);
-		
+
 		// recommend for all users
 		//JavaPairRDD<Integer, Integer> recOutput = icf.performBatchRecommendation(trainDataFlattened,k);
-		
+
 		// recommend to target user only 		
 		// here I perform recommendation for all users - which is not necessary in real world!!
 		List<Integer> targets = trainDataFlattened.keys().distinct().collect();
@@ -94,11 +114,11 @@ public class Main implements Serializable {
 
 		for(Integer targetUserId: targets){
 			JavaPairRDD<Integer, Integer> neighbors = icf.selectNeighbors(targetUserId, trainDataFlattened);// can be done in batch also out of loop
-			
+
 			/*// print neighbors
 			Printer.printToFile(Main.logPath, "Neighbors: ");
 			neighbors.foreach(entry->Printer.printToFile(Main.logPath, entry._1 + ", " + entry._2  ));*/
-			
+
 			if(recOutput == null){
 				recOutput = icf.recommend(targetUserId, trainDataFlattened, neighbors, k);	
 			} else {
@@ -124,11 +144,11 @@ public class Main implements Serializable {
 
 		for(Integer targetUserId: targets){
 			JavaPairRDD<Integer, Integer> neighbors = ucf.selectNeighbors(targetUserId, trainDataFlattened);// can be done in batch also out of loop
-			
+
 			// print neighbors
 			Printer.printToFile(Main.logPath, "Neighbors: ");
 			neighbors.foreach(entry->Printer.printToFile(Main.logPath, entry._1 + ", " + entry._2  ));
-			
+
 			if(recOutput == null){
 				recOutput = ucf.recommend(targetUserId, trainDataFlattened, neighbors, k);	
 			} else {
