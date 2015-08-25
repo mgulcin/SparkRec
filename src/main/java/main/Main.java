@@ -56,14 +56,11 @@ public class Main implements Serializable {
 		int N = 2;
 		//JavaPairRDD<Integer, Integer> recOutput = recommendbByUserBasedCollabFiltering(N,k, trainDataFlattened);
 		//JavaPairRDD<Integer, Integer> recOutput = recommendbByItemBasedCollabFiltering(N,k, trainDataFlattened);
-		JavaPairRDD<Integer, Integer> recOutput = recommendbByHybridCollabFiltering(N,k, trainDataFlattened);
+		//JavaPairRDD<Integer, Integer> recOutput = recommendbByHybridCollabFiltering(N,k, trainDataFlattened);
+		JavaPairRDD<Integer, Integer> recOutput = recommendbByMultiObjectiveRec(N,k, inputDataList);
 
 		// print
-		//recOutput.filter(x->x._1 == 1).foreach(e->Printer.printToFile(logPath, e._1 + " , " + e._2));
-
-
-		//MultiObjectiveRec moRec = new MultiObjectiveRec(N);
-		//JavaPairRDD<Integer, Integer> recOutput = moRec.performRecommendation(sc, inputDataList, k);
+		//recOutput.foreach(e->Printer.printToFile(logPath, e._1 + " , " + e._2));
 
 
 
@@ -79,11 +76,40 @@ public class Main implements Serializable {
 		sc.close();
 	}
 
+	private static JavaPairRDD<Integer, Integer> recommendbByMultiObjectiveRec(
+			int N, int k, List<JavaPairRDD<Integer, Integer>> inputDataList) {
+		MultiObjectiveRec moRec = new MultiObjectiveRec(N);
+		//JavaPairRDD<Integer, Integer> recOutput = moRec.performBatchRecommendation(inputDataList, k);
+		// recommend to target user only 		
+		// here I perform recommendation for all users - which is not necessary in real world!!
+		JavaPairRDD<Integer, Integer> baseData = inputDataList.get(0);//TODO base data 
+		List<Integer> targets = baseData.keys().distinct().collect();
+		JavaPairRDD<Integer, Integer> recOutput = null;
+
+		for(Integer targetUserId: targets){
+			JavaPairRDD<Integer, Integer> neighbors = moRec.selectNeighbors(targetUserId, inputDataList);// can be done in batch also out of loop
+
+			// print neighbors
+			Printer.printToFile(Main.logPath, "Neighbors: ");
+			neighbors.foreach(entry->Printer.printToFile(Main.logPath, entry._1 + ", " + entry._2  ));
+			
+			if(recOutput == null){
+				recOutput = moRec.recommend(targetUserId, inputDataList, neighbors, k);	
+			} else {
+				JavaPairRDD<Integer, Integer> recOutputDummy = moRec.recommend(targetUserId,  inputDataList, neighbors, k);	;		
+				recOutput = recOutput.union(recOutputDummy);
+			}
+		}
+
+		return recOutput;
+	}
+
 	private static JavaPairRDD<Integer, Integer> recommendbByHybridCollabFiltering(
 			int N, int k, JavaPairRDD<Integer, Integer> trainDataFlattened) {
 		HybridRec hybrid = new HybridRec(N);
 		// recommend for all users
 		//JavaPairRDD<Integer, Integer> recOutput = hybrid.performBatchRecommendation(trainDataFlattened, k);
+
 		// recommend to target user only 		
 		// here I perform recommendation for all users - which is not necessary in real world!!
 		List<Integer> targets = trainDataFlattened.keys().distinct().collect();
