@@ -5,11 +5,11 @@ import java.util.HashSet;
 import java.util.List;
 
 import main.Main;
+import main.Printer;
 import main.Utils;
 
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.distributed.MatrixEntry;
 
@@ -52,9 +52,9 @@ public class UserBasedCollabFiltering implements Serializable {
 		// Select most similar users (i.e. neighbors)
 		JavaPairRDD<Integer,Integer> neighbors = selectNeighbors(dataFlattened);
 		neighbors.cache();
-		/*// print neighbors
+		// print neighbors
 		Printer.printToFile(Main.logPath, "Neighbors: ");
-		neighbors.foreach(entry->Printer.printToFile(Main.logPath, entry._1 + ", " + entry._2  ));*/
+		neighbors.foreach(entry->Printer.printToFile(Main.logPath, entry._1 + ", " + entry._2  ));
 
 		// find topk
 		JavaPairRDD<Integer,Integer> topKRecItems = RecommenderUtil.selectItemsFromNeighbors(dataFlattened, neighbors, k);
@@ -64,6 +64,7 @@ public class UserBasedCollabFiltering implements Serializable {
 
 		return topKRecItems;
 	}
+
 
 	/**
 	 * 
@@ -133,6 +134,7 @@ public class UserBasedCollabFiltering implements Serializable {
 			calculateSimilarityAmongUsers(dataFlattened);
 		}
 
+		// select neighbors
 		// Create sorted list (based on similarity) of other users for each user	
 		// sort by value and group by i // TODO does this always return sorted list after groupby?
 		JavaRDD<MatrixEntry> sortedSimEntriesUnionRdd = simEntries.sortBy(x->x.value(),false,1);
@@ -152,6 +154,8 @@ public class UserBasedCollabFiltering implements Serializable {
 
 		return neighbors;
 	}
+
+
 
 	/**
 	 * 1- Calculate similarity among target and other users based on their past preferences (e.g. movies rated, products bought, venues checked in)
@@ -185,7 +189,7 @@ public class UserBasedCollabFiltering implements Serializable {
 
 		return neighbors;
 	}
-
+	
 	/**
 	 * 
 	 * @param dataFlattened: Input data with the format userid-->itemid
@@ -201,7 +205,6 @@ public class UserBasedCollabFiltering implements Serializable {
 			//groupedSimUnion.foreach(entry->print(entry));
 		}
 	}
-
 
 }
 

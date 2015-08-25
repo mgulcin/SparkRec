@@ -46,7 +46,7 @@ public class Main implements Serializable {
 		// perform recommendation
 		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
 		JavaPairRDD<Integer, Integer> trainDataFlattened = readData(sc, trainFile);
-
+				
 		// inclusion of multiple features
 		List<JavaPairRDD<Integer, Integer>> inputDataList = new ArrayList<JavaPairRDD<Integer,Integer>>();
 		inputDataList.add(trainDataFlattened);
@@ -54,10 +54,10 @@ public class Main implements Serializable {
 		// recommend
 		int k = 3;
 		int N = 2;
-		//JavaPairRDD<Integer, Integer> recOutput = recommendbByUserBasedCollabFiltering(N,k, trainDataFlattened);
+		JavaPairRDD<Integer, Integer> recOutput = recommendbByUserBasedCollabFiltering(N,k, trainDataFlattened);
 		//JavaPairRDD<Integer, Integer> recOutput = recommendbByItemBasedCollabFiltering(N,k, trainDataFlattened);
 		//JavaPairRDD<Integer, Integer> recOutput = recommendbByHybridCollabFiltering(N,k, trainDataFlattened);
-		JavaPairRDD<Integer, Integer> recOutput = recommendbByMultiObjectiveRec(N,k, inputDataList);
+		//JavaPairRDD<Integer, Integer> recOutput = recommendbByMultiObjectiveRec(N,k, inputDataList);
 
 		// print
 		//recOutput.foreach(e->Printer.printToFile(logPath, e._1 + " , " + e._2));
@@ -75,6 +75,7 @@ public class Main implements Serializable {
 
 		sc.close();
 	}
+
 
 	private static JavaPairRDD<Integer, Integer> recommendbByMultiObjectiveRec(
 			int N, int k, List<JavaPairRDD<Integer, Integer>> inputDataList) {
@@ -156,14 +157,15 @@ public class Main implements Serializable {
 		return recOutput;
 	}
 
+
 	private static JavaPairRDD<Integer, Integer> recommendbByUserBasedCollabFiltering(int N, int k,
 			JavaPairRDD<Integer, Integer> trainDataFlattened) {
 		UserBasedCollabFiltering ucf = new UserBasedCollabFiltering(N);
 
 		// recommend for all users
-		//JavaPairRDD<Integer, Integer> recOutput = ucf.performBatchRecommendation(trainDataFlattened, k);
+		JavaPairRDD<Integer, Integer> recOutput = ucf.performBatchRecommendation(trainDataFlattened, k);
 
-		// recommend to target user only 		
+		/*// recommend to target user only 		
 		// here I perform recommendation for all users - which is not necessary in real world!!
 		List<Integer> targets = trainDataFlattened.keys().distinct().collect();
 		JavaPairRDD<Integer, Integer> recOutput = null;
@@ -182,11 +184,8 @@ public class Main implements Serializable {
 				recOutput = recOutput.union(recOutputDummy);
 			}
 
-		}
-		// print
-		Printer.printToFile(Main.logPath, "TopK: ");
-		recOutput.foreach(e->Printer.printToFile(Main.logPath, e._1 + " , " + e._2));
-
+		}*/
+		
 		return recOutput;
 	}
 
