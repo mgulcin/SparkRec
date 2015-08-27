@@ -45,7 +45,7 @@ public class Main implements Serializable {
 
 		// perform recommendation
 		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
-		JavaPairRDD<Integer, Integer> trainDataFlattened = readData(sc, trainFile);
+		JavaPairRDD<Integer, Integer> trainDataFlattened = Utils.readData(sc, trainFile);
 				
 		// inclusion of multiple features
 		List<JavaPairRDD<Integer, Integer>> inputDataList = new ArrayList<JavaPairRDD<Integer,Integer>>();
@@ -66,7 +66,7 @@ public class Main implements Serializable {
 
 		// perform test
 		// read data from file: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
-		JavaPairRDD<Integer, Integer> testDataFlattened = readData(sc, testFile);
+		JavaPairRDD<Integer, Integer> testDataFlattened = Utils.readData(sc, testFile);
 
 		// evaluate
 		EvaluationResult evalResult = Evaluate.evaluate(recOutput,testDataFlattened);
@@ -189,49 +189,7 @@ public class Main implements Serializable {
 		return recOutput;
 	}
 
-	/**
-	 * 
-	 * @param sc: JavaSparkContext
-	 * @param file: File to be read with format: userid, itemid1, itemid2, ...
-	 * @return flattenedData: userid, itemid e.g. u3-->i21
-	 */
-	private static JavaPairRDD<Integer, Integer>  readData(JavaSparkContext sc, String file) {
-		// load data : userid, itemid1,itemid2,...
-		JavaRDD<String> data = sc.textFile(file);
 
-		// parse data: userid, <list of itemid> e.g. u3--><i21,i45,i89>
-		JavaRDD<ArrayList<Integer>> dataSplitted = data.map((String line)->splitLine(line));
-		JavaPairRDD<Integer,Iterable<Integer>> dataMapped = dataSplitted.mapToPair((ArrayList<Integer> userItemList)->new Tuple2<Integer, Iterable<Integer>>(userItemList.get(0), 
-				new ArrayList<Integer>(userItemList.subList(1,userItemList.size()))));
-		// print 
-		//dataMapped.foreach(s->System.out.println(s));
-		JavaPairRDD<Integer, Iterable<Integer>> dataMappedFiltered = dataMapped.filter(dm->(((Collection<Integer>) dm._2()).size() > 0));
-		// print 
-		//dataMappedFiltered.foreach(s->System.out.println(s));
-
-		// flatten dataMapped: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
-		JavaPairRDD<Integer, Integer> dataFlattened = dataMappedFiltered.flatMapValues(e->e);
-		dataFlattened.cache();
-		// print
-		//dataFlattened.foreach(s->System.out.println(s));
-
-		return dataFlattened;
-	}
-
-	/**
-	 * 
-	 * @param line: userid, itemid1, itemid2, ...
-	 * @return
-	 */
-	private static ArrayList<Integer> splitLine(String line) {
-		String[] splitted = line.split(",");
-		ArrayList<Integer> intVals = new ArrayList<Integer>(splitted.length);
-		for(String s: splitted){
-			intVals.add(Integer.valueOf(s));
-		}
-
-		return intVals;
-	}
 
 }
 

@@ -1,5 +1,6 @@
 package main;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -7,6 +8,7 @@ import java.util.List;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.linalg.distributed.CoordinateMatrix;
@@ -21,6 +23,50 @@ import com.google.common.base.Optional;
 
 public class Utils {
 
+	/**
+	 * 
+	 * @param sc: JavaSparkContext
+	 * @param file: File to be read with format: userid, itemid1, itemid2, ...
+	 * @return flattenedData: userid, itemid e.g. u3-->i21
+	 */
+	static JavaPairRDD<Integer, Integer>  readData(JavaSparkContext sc, String file) {
+		// load data : userid, itemid1,itemid2,...
+		JavaRDD<String> data = sc.textFile(file);
+
+		// parse data: userid, <list of itemid> e.g. u3--><i21,i45,i89>
+		JavaRDD<ArrayList<Integer>> dataSplitted = data.map((String line)->splitLine(line));
+		JavaPairRDD<Integer,Iterable<Integer>> dataMapped = dataSplitted.mapToPair((ArrayList<Integer> userItemList)->new Tuple2<Integer, Iterable<Integer>>(userItemList.get(0), 
+				new ArrayList<Integer>(userItemList.subList(1,userItemList.size()))));
+		// print 
+		//dataMapped.foreach(s->System.out.println(s));
+		JavaPairRDD<Integer, Iterable<Integer>> dataMappedFiltered = dataMapped.filter(dm->(((Collection<Integer>) dm._2()).size() > 0));
+		// print 
+		//dataMappedFiltered.foreach(s->System.out.println(s));
+
+		// flatten dataMapped: userid, itemid e.g. u3-->i21,u3-->i45, u3-->i89
+		JavaPairRDD<Integer, Integer> dataFlattened = dataMappedFiltered.flatMapValues(e->e);
+		dataFlattened.cache();
+		// print
+		//dataFlattened.foreach(s->System.out.println(s));
+
+		return dataFlattened;
+	}
+
+	/**
+	 * 
+	 * @param line: userid, itemid1, itemid2, ...
+	 * @return
+	 */
+	private static ArrayList<Integer> splitLine(String line) {
+		String[] splitted = line.split(",");
+		ArrayList<Integer> intVals = new ArrayList<Integer>(splitted.length);
+		for(String s: splitted){
+			intVals.add(Integer.valueOf(s));
+		}
+
+		return intVals;
+	}
+	
 	public static Vector createVectorOf(int size, Tuple2<Integer, Iterable<Tuple2<Integer, Integer>>> t){
 		List<Integer> indices = new ArrayList<Integer>();
 		List<Double> values = new ArrayList<Double>();

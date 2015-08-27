@@ -3,6 +3,9 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.List;
+
+import org.apache.spark.api.java.JavaPairRDD;
 
 import recommender.FeatureSim;
 import scala.Tuple2;
@@ -74,5 +77,18 @@ public class Printer {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+	}
+
+	public static void writeToDirectory(String outputDir, String suffix,
+			List<JavaPairRDD<Integer, Integer>> chunks) {
+		
+		int index = 0;
+		for(JavaPairRDD<Integer, Integer> chunk: chunks){
+			String path = outputDir + suffix + index+".csv";
+			chunk.foreach(tuple->Printer.printToFile(path, tuple._1 + " , " + tuple._2));
+						
+			index++;
+		}
+		
 	}
 }
