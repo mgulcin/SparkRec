@@ -8,7 +8,7 @@ Recommendation framework written in Spark/Java
 
 *(i)* Makbule Gulcin Ozsoy, Faruk Polat, Reda Alhajj: Multi-objective optimization based location and social network aware recommendation. CollaborateCom 2014: 233-242
 
-Note: Even though this code is not directly used in *(i)*, refer to *(i)* whenever all or any part of this code is used.
+Note: Even though this code is not directly used in *(i)*, cite *(i)* whenever all or any part of this code is used.
 
 
 
